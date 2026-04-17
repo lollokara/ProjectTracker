@@ -14,7 +14,6 @@ class MemoryStore {
     const windowStart = now - windowMs;
     
     let timestamps = this.hits.get(key) || [];
-    // Filter out old timestamps
     timestamps = timestamps.filter(t => t > windowStart);
     
     if (timestamps.length >= limit) {
@@ -29,12 +28,25 @@ class MemoryStore {
     timestamps.push(now);
     this.hits.set(key, timestamps);
 
+    // Simple cleanup: if map gets too large, prune it
+    if (this.hits.size > 1000) {
+      for (const [k, v] of this.hits.entries()) {
+        if (v.every(t => t <= now - windowMs)) {
+          this.hits.delete(k);
+        }
+      }
+    }
+
     return {
       success: true,
       limit,
       remaining: limit - timestamps.length,
       reset: now + windowMs
     };
+  }
+
+  clear() {
+    this.hits.clear();
   }
 }
 
