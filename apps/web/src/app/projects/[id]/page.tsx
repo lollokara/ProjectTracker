@@ -8,7 +8,7 @@ import {
   getProject, updateProject, deleteProject,
   getNotes, createNote, updateNote, deleteNote,
   getAttachments, uploadAttachment, deleteAttachment, getAttachmentUrl,
-  getReminders, createReminder, cancelReminder,
+  getReminders, createReminder, deleteReminder,
   getTimeline,
 } from '@/lib/api';
 
@@ -169,6 +169,16 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     setShowAddReminder(false);
     setReminderForm({ preset: 'morning', title: '', customDate: '' });
     loadReminders();
+    loadTimeline();
+  }
+
+  async function handleEditNote(note: any) {
+    const title = prompt('Edit title', note.title);
+    if (title === null) return;
+    const body = prompt('Edit details', note.body || '');
+    if (body === null) return;
+    await updateNote(note.id, { title, body });
+    loadNotes();
     loadTimeline();
   }
 
@@ -386,11 +396,17 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   <span className={`badge ${rem.status === 'pending' ? 'badge-medium' : rem.status === 'delivered' ? 'status-completed' : 'badge-critical'}`}>
                     {rem.status}
                   </span>
-                  {rem.status === 'pending' && (
-                    <button onClick={() => { cancelReminder(rem.id); loadReminders(); }} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}>
-                      ✕
-                    </button>
-                  )}
+                  <button
+                    onClick={async () => {
+                      await deleteReminder(rem.id);
+                      loadReminders();
+                      loadTimeline();
+                    }}
+                    style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', fontSize: '1.2rem' }}
+                    title="Delete reminder"
+                  >
+                    ✕
+                  </button>
                 </div>
               ))}
             </div>
@@ -434,6 +450,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         actions={
           actionMenu.type === 'note'
             ? [
+                { label: 'Edit', onClick: async () => { await handleEditNote(actionMenu.item); } },
                 { label: 'Delete', variant: 'danger', onClick: async () => { await deleteNote(actionMenu.item.id); loadNotes(); loadTimeline(); } },
               ]
             : actionMenu.type === 'attachment'

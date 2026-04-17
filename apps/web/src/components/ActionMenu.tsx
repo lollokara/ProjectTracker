@@ -71,18 +71,25 @@ export function ActionMenu({ actions, isOpen, position, onClose }: ActionMenuPro
               gap: '0.75rem',
               width: '100%',
               padding: '1rem 1.25rem',
-              fontSize: '1rem',
-              fontWeight: 500,
+              fontSize: '0.95rem',
+              fontWeight: 600,
               color: action.variant === 'danger' ? 'var(--color-accent-danger)' : 'var(--color-text-primary)',
-              background: 'transparent',
-              border: 'none',
+              background: action.variant === 'danger' ? 'rgba(255, 45, 85, 0.08)' : 'rgba(255,255,255,0.04)',
+              border: `1px solid ${action.variant === 'danger' ? 'rgba(255, 45, 85, 0.25)' : 'var(--color-border-glass)'}`,
               borderRadius: 'var(--radius-md)',
               cursor: 'pointer',
               textAlign: 'left',
-              transition: 'background 0.15s ease',
+              transition: 'all 0.15s ease',
+              marginBottom: '0.5rem',
             }}
-            onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-            onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background =
+                action.variant === 'danger' ? 'rgba(255, 45, 85, 0.14)' : 'rgba(255,255,255,0.08)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background =
+                action.variant === 'danger' ? 'rgba(255, 45, 85, 0.08)' : 'rgba(255,255,255,0.04)';
+            }}
           >
             {action.icon}
             {action.label}

@@ -51,7 +51,19 @@ export function BottomNav() {
               transition: 'color 0.2s ease',
             }}
           >
-            <span style={{ fontSize: '1.4rem' }}>{item.icon}</span>
+            <span
+              style={{
+                fontSize: '1.25rem',
+                width: '1.5rem',
+                height: '1.5rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                lineHeight: 1,
+              }}
+            >
+              {item.icon}
+            </span>
             {item.label}
           </Link>
         );

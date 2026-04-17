@@ -5,17 +5,13 @@ import { requireAuth } from '@/lib/auth';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-// DELETE /api/reminders/[id] — cancel a reminder
+// DELETE /api/reminders/[id] — delete a reminder
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     await requireAuth();
     const { id } = await context.params;
 
-    const [reminder] = await db
-      .update(reminders)
-      .set({ status: 'cancelled' })
-      .where(eq(reminders.id, id))
-      .returning();
+    const [reminder] = await db.delete(reminders).where(eq(reminders.id, id)).returning();
 
     if (!reminder) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ success: true });

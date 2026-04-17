@@ -118,6 +118,10 @@ export async function cancelReminder(id: string) {
   return fetchAPI<any>(`/api/reminders/${id}`, { method: 'DELETE' });
 }
 
+export async function deleteReminder(id: string) {
+  return fetchAPI<any>(`/api/reminders/${id}`, { method: 'DELETE' });
+}
+
 // ── Search ───────────────────────────────────────────────────────────
 export async function search(q: string, limit = 25, offset = 0) {
   const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });

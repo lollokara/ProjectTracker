@@ -217,7 +217,9 @@ export default function SettingsPage() {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {devices.map((device) => (
+          {devices
+            .filter((device) => !device.revokedAt)
+            .map((device) => (
             <div
               key={device.id}
               style={{
@@ -226,8 +228,7 @@ export default function SettingsPage() {
                 gap: '0.75rem',
                 padding: '0.75rem',
                 borderRadius: 'var(--radius-md)',
-                background: device.revokedAt ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.03)',
-                opacity: device.revokedAt ? 0.5 : 1,
+                background: 'rgba(255,255,255,0.03)',
               }}
             >
               <div style={{ flex: 1 }}>
@@ -240,25 +241,63 @@ export default function SettingsPage() {
                     : `Added ${new Date(device.createdAt).toLocaleDateString()}`}
                 </div>
               </div>
-              {!device.revokedAt && (
-                <button
-                  onClick={() => handleRevokeDevice(device.id)}
-                  style={{
-                    padding: '0.375rem 0.625rem',
-                    fontSize: '0.7rem',
-                    color: 'var(--color-accent-danger)',
-                    background: 'rgba(255, 45, 85, 0.08)',
-                    border: '1px solid rgba(255, 45, 85, 0.2)',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Revoke
-                </button>
-              )}
+              <button
+                onClick={() => handleRevokeDevice(device.id)}
+                style={{
+                  padding: '0.375rem 0.625rem',
+                  fontSize: '0.7rem',
+                  color: 'var(--color-accent-danger)',
+                  background: 'rgba(255, 45, 85, 0.08)',
+                  border: '1px solid rgba(255, 45, 85, 0.2)',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                }}
+              >
+                Revoke
+              </button>
             </div>
           ))}
         </div>
+
+        {devices.some((d) => d.revokedAt) && (
+          <>
+            <div
+              style={{
+                fontSize: '0.78rem',
+                color: 'var(--color-text-muted)',
+                marginTop: '0.9rem',
+                marginBottom: '0.5rem',
+              }}
+            >
+              Revoked
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {devices
+                .filter((device) => !!device.revokedAt)
+                .map((device) => (
+                  <div
+                    key={device.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.75rem',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'rgba(255,255,255,0.01)',
+                      opacity: 0.6,
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{device.label}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                        Revoked {new Date(device.revokedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </>
+        )}
       </section>
 
       {/* App Info */}

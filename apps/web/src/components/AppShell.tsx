@@ -46,7 +46,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
       <main
         style={{
           padding: title
-            ? `calc(${headerHeight} + 1rem) 1rem 5rem`
+            ? `calc(${headerHeight} + 0.25rem) 1rem 5rem`
             : '1rem 1rem 5rem',
           maxWidth: '800px',
           margin: '0 auto',
