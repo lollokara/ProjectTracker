@@ -4,7 +4,7 @@ import { ReactNode } from 'react';
 import { BottomNav } from './BottomNav';
 
 export function AppShell({ children, title }: { children: ReactNode; title?: string }) {
-  const headerHeight = 'calc(3.25rem + env(safe-area-inset-top))';
+  const headerHeight = 'calc(2.8rem + env(safe-area-inset-top))';
 
   return (
     <div style={{ position: 'relative', zIndex: 1, minHeight: '100dvh' }}>
@@ -19,12 +19,12 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
             zIndex: 100,
             height: headerHeight,
             display: 'flex',
-            alignItems: 'flex-end',
+            alignItems: 'center',
             background: 'rgba(10, 10, 20, 0.85)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
             borderBottom: '1px solid var(--color-border-glass)',
-            padding: '0.75rem 1.25rem',
+            padding: '0.5rem 1.25rem',
             paddingTop: 'env(safe-area-inset-top)',
           }}
         >
@@ -46,8 +46,10 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
       <main
         style={{
           padding: title
-            ? `calc(${headerHeight} + 0.25rem) 1rem 5rem`
+            ? `calc(${headerHeight} + 0.1rem) 1rem calc(4.5rem + env(safe-area-inset-bottom))`
             : '1rem 1rem 5rem',
+          boxSizing: 'border-box',
+          minHeight: title ? `calc(100dvh - ${headerHeight})` : '100dvh',
           maxWidth: '800px',
           margin: '0 auto',
         }}

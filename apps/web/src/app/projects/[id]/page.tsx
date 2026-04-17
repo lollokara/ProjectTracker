@@ -38,11 +38,19 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   // Note/Todo creation
   const [showAddNote, setShowAddNote] = useState(false);
   const [noteForm, setNoteForm] = useState({ title: '', body: '', kind: 'note', priority: 'medium' });
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [savingNote, setSavingNote] = useState(false);
   const addNoteFormRef = useRef<HTMLFormElement | null>(null);
 
   // Reminder
   const [showAddReminder, setShowAddReminder] = useState(false);
-  const [reminderForm, setReminderForm] = useState({ preset: 'morning', title: '', customDate: '' });
+  const [reminderForm, setReminderForm] = useState({
+    preset: 'morning',
+    title: '',
+    customDate: '',
+    relativeDayPart: '' as '' | 'morning' | 'afternoon',
+  });
+  const [savingReminder, setSavingReminder] = useState(false);
   const addReminderFormRef = useRef<HTMLFormElement | null>(null);
 
   // Action menu
@@ -89,6 +97,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       const target = event.target as Node | null;
       if (showAddNote && addNoteFormRef.current && target && !addNoteFormRef.current.contains(target)) {
         setShowAddNote(false);
+        setEditingNoteId(null);
       }
       if (
         showAddReminder &&
@@ -128,14 +137,29 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   async function handleAddNote(e: React.FormEvent) {
     e.preventDefault();
-    await createNote({
-      projectId: id,
-      ...noteForm,
-    });
-    setNoteForm({ title: '', body: '', kind: noteForm.kind, priority: 'medium' });
-    setShowAddNote(false);
-    loadNotes();
-    loadTimeline();
+    if (savingNote) return;
+    setSavingNote(true);
+    try {
+      if (editingNoteId) {
+        await updateNote(editingNoteId, {
+          title: noteForm.title,
+          body: noteForm.body,
+          priority: noteForm.priority,
+        });
+        setEditingNoteId(null);
+      } else {
+        await createNote({
+          projectId: id,
+          ...noteForm,
+        });
+      }
+      setNoteForm({ title: '', body: '', kind: noteForm.kind, priority: 'medium' });
+      setShowAddNote(false);
+      loadNotes();
+      loadTimeline();
+    } finally {
+      setSavingNote(false);
+    }
   }
 
   async function handleToggleTodo(noteId: string, completedAt: string | null) {
@@ -160,26 +184,52 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   async function handleAddReminder(e: React.FormEvent) {
     e.preventDefault();
-    await createReminder({
-      projectId: id,
-      preset: reminderForm.preset,
-      title: reminderForm.title || project?.title || 'Reminder',
-      scheduledFor: reminderForm.preset === 'custom' ? new Date(reminderForm.customDate).toISOString() : undefined,
-    });
-    setShowAddReminder(false);
-    setReminderForm({ preset: 'morning', title: '', customDate: '' });
-    loadReminders();
-    loadTimeline();
+    if (savingReminder) return;
+    setSavingReminder(true);
+    try {
+      let preset = reminderForm.preset as string;
+      let scheduledFor: string | undefined;
+
+      if (reminderForm.preset === 'custom') {
+        scheduledFor = new Date(reminderForm.customDate).toISOString();
+      } else if (['in_1_day', 'in_3_days', 'in_7_days'].includes(reminderForm.preset)) {
+        if (!reminderForm.relativeDayPart) {
+          alert('Choose morning or afternoon for this reminder');
+          return;
+        }
+        const daysMap: Record<string, number> = { in_1_day: 1, in_3_days: 3, in_7_days: 7 };
+        const days = daysMap[reminderForm.preset] ?? 1;
+        const target = new Date();
+        target.setDate(target.getDate() + days);
+        target.setHours(reminderForm.relativeDayPart === 'morning' ? 9 : 14, 0, 0, 0);
+        scheduledFor = target.toISOString();
+        preset = 'custom';
+      }
+
+      await createReminder({
+        projectId: id,
+        preset,
+        title: reminderForm.title || project?.title || 'Reminder',
+        scheduledFor,
+      });
+      setShowAddReminder(false);
+      setReminderForm({ preset: 'morning', title: '', customDate: '', relativeDayPart: '' });
+      loadReminders();
+      loadTimeline();
+    } finally {
+      setSavingReminder(false);
+    }
   }
 
   async function handleEditNote(note: any) {
-    const title = prompt('Edit title', note.title);
-    if (title === null) return;
-    const body = prompt('Edit details', note.body || '');
-    if (body === null) return;
-    await updateNote(note.id, { title, body });
-    loadNotes();
-    loadTimeline();
+    setEditingNoteId(note.id);
+    setNoteForm({
+      title: note.title || '',
+      body: note.body || '',
+      kind: note.kind || (activeTab === 'todos' ? 'todo' : 'note'),
+      priority: note.priority || 'medium',
+    });
+    setShowAddNote(true);
   }
 
   if (!project) {
@@ -272,7 +322,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         <div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.75rem' }}>
             <button className="btn-primary" onClick={() => { setShowAddNote(!showAddNote); setNoteForm({ ...noteForm, kind: activeTab === 'todos' ? 'todo' : 'note' }); }}>
-              + Add {activeTab === 'todos' ? 'Todo' : 'Note'}
+              {showAddNote ? 'Close' : `+ Add ${activeTab === 'todos' ? 'Todo' : 'Note'}`}
             </button>
           </div>
           {showAddNote && (
@@ -283,7 +333,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 <select className="input-field" value={noteForm.priority} onChange={(e) => setNoteForm({ ...noteForm, priority: e.target.value })} style={{ flex: 1 }}>
                   {priorityOptions.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
-                <button type="submit" className="btn-primary">Save</button>
+                <button type="submit" className="btn-primary" disabled={savingNote} style={{ opacity: savingNote ? 0.7 : 1 }}>
+                  {savingNote ? 'Saving...' : editingNoteId ? 'Save Changes' : 'Save'}
+                </button>
               </div>
             </form>
           )}
@@ -348,7 +400,16 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   <button
                     key={p.value}
                     type="button"
-                    onClick={() => setReminderForm({ ...reminderForm, preset: p.value })}
+                    onClick={() =>
+                      setReminderForm({
+                        ...reminderForm,
+                        preset: p.value,
+                        relativeDayPart:
+                          ['in_1_day', 'in_3_days', 'in_7_days'].includes(p.value) ?
+                            reminderForm.relativeDayPart :
+                            '',
+                      })
+                    }
                     style={{
                       padding: '0.625rem',
                       fontSize: '0.8rem',
@@ -364,6 +425,32 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   </button>
                 ))}
               </div>
+              {['in_1_day', 'in_3_days', 'in_7_days'].includes(reminderForm.preset) && (
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  {[
+                    { value: 'morning', label: '🌅 Morning' },
+                    { value: 'afternoon', label: '☀️ Afternoon' },
+                  ].map((slot) => (
+                    <button
+                      key={slot.value}
+                      type="button"
+                      onClick={() => setReminderForm({ ...reminderForm, relativeDayPart: slot.value as 'morning' | 'afternoon' })}
+                      style={{
+                        flex: 1,
+                        padding: '0.625rem',
+                        fontSize: '0.8rem',
+                        background: reminderForm.relativeDayPart === slot.value ? 'rgba(0, 255, 200, 0.1)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${reminderForm.relativeDayPart === slot.value ? 'var(--color-accent-primary)' : 'var(--color-border-glass)'}`,
+                        borderRadius: 'var(--radius-md)',
+                        color: reminderForm.relativeDayPart === slot.value ? 'var(--color-accent-primary)' : 'var(--color-text-secondary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {slot.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {reminderForm.preset === 'custom' && (
                 <input
                   type="datetime-local"
@@ -374,7 +461,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   style={{ marginBottom: '0.5rem' }}
                 />
               )}
-              <button type="submit" className="btn-primary" style={{ width: '100%' }}>Schedule</button>
+              <button type="submit" className="btn-primary" disabled={savingReminder} style={{ width: '100%', opacity: savingReminder ? 0.7 : 1 }}>
+                {savingReminder ? 'Scheduling...' : 'Schedule'}
+              </button>
             </form>
           )}
           {reminders.length === 0 ? (

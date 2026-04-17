@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const [pushStatus, setPushStatus] = useState<string>('unknown');
   const [pushError, setPushError] = useState<string>('');
   const [enablingPush, setEnablingPush] = useState(false);
+  const [showRevoked, setShowRevoked] = useState(false);
 
   useEffect(() => {
     loadDevices();
@@ -261,41 +262,51 @@ export default function SettingsPage() {
 
         {devices.some((d) => d.revokedAt) && (
           <>
-            <div
+            <button
+              onClick={() => setShowRevoked((v) => !v)}
               style={{
+                width: '100%',
+                marginTop: '0.9rem',
+                marginBottom: showRevoked ? '0.5rem' : 0,
+                padding: '0.5rem 0.75rem',
                 fontSize: '0.78rem',
                 color: 'var(--color-text-muted)',
-                marginTop: '0.9rem',
-                marginBottom: '0.5rem',
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid var(--color-border-glass)',
+                borderRadius: 'var(--radius-md)',
+                textAlign: 'left',
+                cursor: 'pointer',
               }}
             >
-              Revoked
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {devices
-                .filter((device) => !!device.revokedAt)
-                .map((device) => (
-                  <div
-                    key={device.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.75rem',
-                      borderRadius: 'var(--radius-md)',
-                      background: 'rgba(255,255,255,0.01)',
-                      opacity: 0.6,
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{device.label}</div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                        Revoked {new Date(device.revokedAt).toLocaleDateString()}
+              {showRevoked ? '▾' : '▸'} Revoked ({devices.filter((d) => d.revokedAt).length})
+            </button>
+            {showRevoked && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {devices
+                  .filter((device) => !!device.revokedAt)
+                  .map((device) => (
+                    <div
+                      key={device.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem',
+                        padding: '0.75rem',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'rgba(255,255,255,0.01)',
+                        opacity: 0.6,
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{device.label}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                          Revoked {new Date(device.revokedAt).toLocaleDateString()}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-            </div>
+                  ))}
+              </div>
+            )}
           </>
         )}
       </section>
