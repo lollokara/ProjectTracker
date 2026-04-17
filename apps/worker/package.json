@@ -1,0 +1,25 @@
+{
+  "name": "@tracker/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint configured yet'"
+  },
+  "dependencies": {
+    "@tracker/db": "workspace:*",
+    "@tracker/shared": "workspace:*",
+    "dotenv": "^16.4.0",
+    "drizzle-orm": "^0.36.0",
+    "web-push": "^3.6.0"
+  },
+  "devDependencies": {
+    "@types/web-push": "^3.6.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

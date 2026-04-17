@@ -1,0 +1,29 @@
+{
+  "name": "project-tracker",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @tracker/web dev",
+    "dev:worker": "pnpm --filter @tracker/worker dev",
+    "dev:all": "pnpm --parallel --filter @tracker/web --filter @tracker/worker dev",
+    "build": "pnpm --filter @tracker/web build",
+    "build:worker": "pnpm --filter @tracker/worker build",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "pnpm --filter @tracker/db generate",
+    "db:migrate": "pnpm --filter @tracker/db migrate",
+    "db:push": "pnpm --filter @tracker/db push",
+    "db:studio": "pnpm --filter @tracker/db studio",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

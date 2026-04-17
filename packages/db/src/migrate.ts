@@ -1,0 +1,163 @@
+import 'dotenv/config';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { sql } from 'drizzle-orm';
+import * as schema from './schema/index.js';
+
+async function migrate() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    console.error('DATABASE_URL not set');
+    process.exit(1);
+  }
+
+  console.log('[migrate] Connecting to database...');
+  const client = postgres(connectionString);
+  const db = drizzle(client, { schema });
+
+  console.log('[migrate] Creating tables...');
+
+  // Create enums
+  await client.unsafe(`
+    DO $$ BEGIN
+      CREATE TYPE project_status AS ENUM ('active', 'paused', 'completed', 'archived');
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+      CREATE TYPE priority AS ENUM ('low', 'medium', 'high', 'critical');
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+      CREATE TYPE note_kind AS ENUM ('note', 'snippet', 'todo');
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+      CREATE TYPE reminder_status AS ENUM ('pending', 'delivered', 'failed', 'cancelled');
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+      CREATE TYPE reminder_preset AS ENUM ('morning', 'afternoon', 'in_1_day', 'in_3_days', 'in_7_days', 'custom');
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+    DO $$ BEGIN
+      CREATE TYPE actor AS ENUM ('system', 'trusted_device');
+    EXCEPTION WHEN duplicate_object THEN null; END $$;
+  `);
+
+  // Create tables
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      label VARCHAR(100) NOT NULL,
+      token_hash VARCHAR(128),
+      last_seen_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      revoked_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS pairing_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      token_hash VARCHAR(128) NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_by_device_id UUID REFERENCES trusted_devices(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS pairing_tokens_hash_idx ON pairing_tokens(token_hash);
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      device_id UUID NOT NULL REFERENCES trusted_devices(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      user_agent TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      revoked_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS push_subscriptions_device_id_idx ON push_subscriptions(device_id);
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      title VARCHAR(200) NOT NULL,
+      slug VARCHAR(220) NOT NULL UNIQUE,
+      summary TEXT,
+      status project_status NOT NULL DEFAULT 'active',
+      priority priority NOT NULL DEFAULT 'medium',
+      repository_url TEXT,
+      search_vector TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS projects_status_idx ON projects(status);
+    CREATE INDEX IF NOT EXISTS projects_created_at_idx ON projects(created_at);
+
+    CREATE TABLE IF NOT EXISTS notes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      kind note_kind NOT NULL DEFAULT 'note',
+      title VARCHAR(300) NOT NULL,
+      body TEXT,
+      priority priority NOT NULL DEFAULT 'medium',
+      completed_at TIMESTAMPTZ,
+      search_vector TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS notes_project_id_idx ON notes(project_id);
+    CREATE INDEX IF NOT EXISTS notes_kind_idx ON notes(kind);
+
+    CREATE TABLE IF NOT EXISTS attachments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+      type VARCHAR(20) NOT NULL,
+      original_name VARCHAR(500) NOT NULL,
+      mime_type VARCHAR(100) NOT NULL,
+      storage_path TEXT NOT NULL,
+      file_size INTEGER,
+      caption TEXT,
+      search_vector TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS attachments_project_id_idx ON attachments(project_id);
+    CREATE INDEX IF NOT EXISTS attachments_note_id_idx ON attachments(note_id);
+
+    CREATE TABLE IF NOT EXISTS reminders (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      note_id UUID REFERENCES notes(id) ON DELETE SET NULL,
+      scheduled_for TIMESTAMPTZ NOT NULL,
+      preset_source reminder_preset NOT NULL,
+      status reminder_status NOT NULL DEFAULT 'pending',
+      delivered_at TIMESTAMPTZ,
+      notification_payload JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS reminders_status_scheduled_idx ON reminders(status, scheduled_for);
+    CREATE INDEX IF NOT EXISTS reminders_project_id_idx ON reminders(project_id);
+
+    CREATE TABLE IF NOT EXISTS activity_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      actor actor NOT NULL DEFAULT 'trusted_device',
+      event_type VARCHAR(50) NOT NULL,
+      entity_type VARCHAR(30) NOT NULL,
+      entity_id UUID,
+      payload JSONB,
+      occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS activity_events_project_id_idx ON activity_events(project_id);
+    CREATE INDEX IF NOT EXISTS activity_events_occurred_at_idx ON activity_events(occurred_at);
+    CREATE INDEX IF NOT EXISTS activity_events_event_type_idx ON activity_events(event_type);
+  `);
+
+  console.log('[migrate] All tables created successfully');
+  await client.end();
+  process.exit(0);
+}
+
+migrate().catch((err) => {
+  console.error('[migrate] Fatal error:', err);
+  process.exit(1);
+});
