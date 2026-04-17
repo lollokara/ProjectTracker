@@ -11,6 +11,8 @@ export default function SettingsPage() {
   const [newToken, setNewToken] = useState<string | null>(null);
   const [tokenExpiry, setTokenExpiry] = useState<string>('');
   const [pushStatus, setPushStatus] = useState<string>('unknown');
+  const [pushError, setPushError] = useState<string>('');
+  const [enablingPush, setEnablingPush] = useState(false);
 
   useEffect(() => {
     loadDevices();
@@ -27,7 +29,7 @@ export default function SettingsPage() {
   }
 
   async function checkPushStatus() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
       setPushStatus('unsupported');
       return;
     }
@@ -56,9 +58,24 @@ export default function SettingsPage() {
   }
 
   async function handleEnableNotifications() {
+    setEnablingPush(true);
+    setPushError('');
     try {
+      const isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as any).standalone === true;
+
+      if (!window.isSecureContext) {
+        throw new Error('Secure context required (HTTPS)');
+      }
+
+      if (!isStandalone) {
+        throw new Error('Open the app from Home Screen, then enable notifications');
+      }
+
       // Register service worker
-      const reg = await navigator.serviceWorker.register('/sw.js');
+      const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+      await reg.update();
       await navigator.serviceWorker.ready;
 
       // Request permission
@@ -71,18 +88,24 @@ export default function SettingsPage() {
       // Get VAPID key
       const { publicKey } = await getVapidKey();
 
-      // Subscribe to push
-      const subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-      });
+      // Reuse existing subscription if present
+      let subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+        });
+      }
 
       // Register on server
       await subscribePush(subscription);
       setPushStatus('granted');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Push setup failed:', err);
       setPushStatus('error');
+      setPushError(err?.message || 'Unknown push setup error');
+    } finally {
+      setEnablingPush(false);
     }
   }
 
@@ -119,16 +142,30 @@ export default function SettingsPage() {
               ? 'Notifications blocked – enable in browser settings'
               : pushStatus === 'unsupported'
               ? 'Push not supported on this device'
+              : pushStatus === 'error'
+              ? 'Push setup failed'
               : 'Notifications not yet enabled'}
           </span>
         </div>
+        {pushError && (
+          <div
+            style={{
+              marginTop: '0.625rem',
+              fontSize: '0.78rem',
+              color: 'var(--color-accent-danger)',
+            }}
+          >
+            {pushError}
+          </div>
+        )}
         {pushStatus !== 'granted' && pushStatus !== 'unsupported' && pushStatus !== 'denied' && (
           <button
             className="btn-primary"
             onClick={handleEnableNotifications}
-            style={{ marginTop: '0.75rem', width: '100%' }}
+            disabled={enablingPush}
+            style={{ marginTop: '0.75rem', width: '100%', opacity: enablingPush ? 0.7 : 1 }}
           >
-            Enable Notifications
+            {enablingPush ? 'Enabling...' : 'Enable Notifications'}
           </button>
         )}
       </section>

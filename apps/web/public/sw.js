@@ -1,7 +1,3 @@
-/// <reference lib="webworker" />
-
-declare const self: ServiceWorkerGlobalScope;
-
 const CACHE_NAME = 'tracker-v1';
 const OFFLINE_URL = '/offline';
 
@@ -45,7 +41,7 @@ self.addEventListener('push', (event) => {
   try {
     const data = event.data.json();
     const title = data.title || 'Project Tracker';
-    const options: NotificationOptions = {
+    const options = {
       body: data.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',

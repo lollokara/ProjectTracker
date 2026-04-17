@@ -37,6 +37,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updatedAt: new Date(),
     };
 
+    if (Object.prototype.hasOwnProperty.call(validated, 'completedAt')) {
+      updates.completedAt = validated.completedAt ? new Date(validated.completedAt) : null;
+    }
+
     if (validated.title || validated.body) {
       updates.searchVector = [validated.title || existing.title, validated.body || existing.body || ''].join(' ');
     }
@@ -64,6 +68,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (error.name === 'ZodError') return NextResponse.json({ error: 'Validation failed', details: error.errors }, { status: 400 });
+    console.error('[notes] PATCH error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

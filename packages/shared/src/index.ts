@@ -32,7 +32,12 @@ export const createNoteSchema = z.object({
 });
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 
-export const updateNoteSchema = createNoteSchema.partial().omit({ projectId: true });
+export const updateNoteSchema = createNoteSchema
+  .partial()
+  .omit({ projectId: true })
+  .extend({
+    completedAt: z.union([z.string().datetime({ offset: true }), z.null()]).optional(),
+  });
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 
 // ── Attachment ───────────────────────────────────────────────────────

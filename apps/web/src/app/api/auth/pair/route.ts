@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, pairingTokens, trustedDevices, activityEvents } from '@tracker/db';
+import { db, pairingTokens, trustedDevices, activityEvents, projects } from '@tracker/db';
 import { eq } from 'drizzle-orm';
 import { createHash, randomBytes } from 'crypto';
 import { getSession } from '@/lib/auth';
@@ -62,15 +62,18 @@ export async function POST(request: NextRequest) {
     session.isAuthenticated = true;
     await session.save();
 
-    // Log activity
-    await db.insert(activityEvents).values({
-      projectId: '00000000-0000-0000-0000-000000000000', // system event
-      actor: 'system',
-      eventType: 'device_paired',
-      entityType: 'device',
-      entityId: device.id,
-      payload: { label: device.label },
-    });
+    // Log activity only if a project exists (activity_events.project_id is required)
+    const [firstProject] = await db.select({ id: projects.id }).from(projects).limit(1);
+    if (firstProject) {
+      await db.insert(activityEvents).values({
+        projectId: firstProject.id,
+        actor: 'system',
+        eventType: 'device_paired',
+        entityType: 'device',
+        entityId: device.id,
+        payload: { label: device.label },
+      });
+    }
 
     console.log(`[auth] Device paired: ${device.label} (${device.id})`);
 
