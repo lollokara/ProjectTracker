@@ -192,6 +192,7 @@ function ProjectCard({
   return (
     <Link
       href={`/projects/${project.id}`}
+      className="no-select"
       style={{ textDecoration: 'none', color: 'inherit' }}
       {...longPressHandlers}
     >

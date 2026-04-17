@@ -323,3 +323,10 @@ body::before {
   background: rgba(0, 255, 200, 0.2);
   color: white;
 }
+
+/* Prevent accidental text selection during long-press interactions */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}

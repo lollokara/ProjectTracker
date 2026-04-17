@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, trustedDevices, activityEvents } from '@tracker/db';
+import { db, trustedDevices, activityEvents, projects } from '@tracker/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@/lib/auth';
 
@@ -24,14 +24,17 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     if (!device) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    await db.insert(activityEvents).values({
-      projectId: '00000000-0000-0000-0000-000000000000',
-      actor: 'trusted_device',
-      eventType: 'device_revoked',
-      entityType: 'device',
-      entityId: device.id,
-      payload: { label: device.label },
-    });
+    const [firstProject] = await db.select({ id: projects.id }).from(projects).limit(1);
+    if (firstProject) {
+      await db.insert(activityEvents).values({
+        projectId: firstProject.id,
+        actor: 'trusted_device',
+        eventType: 'device_revoked',
+        entityType: 'device',
+        entityId: device.id,
+        payload: { label: device.label },
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { ActionMenu, useLongPress } from '@/components/ActionMenu';
@@ -38,10 +38,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   // Note/Todo creation
   const [showAddNote, setShowAddNote] = useState(false);
   const [noteForm, setNoteForm] = useState({ title: '', body: '', kind: 'note', priority: 'medium' });
+  const addNoteFormRef = useRef<HTMLFormElement | null>(null);
 
   // Reminder
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [reminderForm, setReminderForm] = useState({ preset: 'morning', title: '', customDate: '' });
+  const addReminderFormRef = useRef<HTMLFormElement | null>(null);
 
   // Action menu
   const [actionMenu, setActionMenu] = useState<{ isOpen: boolean; type: string; item: any }>({
@@ -81,6 +83,30 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     loadReminders();
     loadTimeline();
   }, [id]);
+
+  useEffect(() => {
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (showAddNote && addNoteFormRef.current && target && !addNoteFormRef.current.contains(target)) {
+        setShowAddNote(false);
+      }
+      if (
+        showAddReminder &&
+        addReminderFormRef.current &&
+        target &&
+        !addReminderFormRef.current.contains(target)
+      ) {
+        setShowAddReminder(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
+  }, [showAddNote, showAddReminder]);
 
   async function handleSaveProject() {
     await updateProject(id, {
@@ -240,7 +266,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </button>
           </div>
           {showAddNote && (
-            <form onSubmit={handleAddNote} className="glass-card animate-slide-up" style={{ padding: '1rem', marginBottom: '1rem' }}>
+            <form ref={addNoteFormRef} onSubmit={handleAddNote} className="glass-card animate-slide-up" style={{ padding: '1rem', marginBottom: '1rem' }}>
               <input className="input-field" value={noteForm.title} onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })} placeholder="Title..." required style={{ marginBottom: '0.5rem' }} autoFocus />
               <textarea className="input-field" value={noteForm.body} onChange={(e) => setNoteForm({ ...noteForm, body: e.target.value })} placeholder="Details..." rows={3} style={{ marginBottom: '0.5rem', resize: 'vertical' }} />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -305,7 +331,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </button>
           </div>
           {showAddReminder && (
-            <form onSubmit={handleAddReminder} className="glass-card animate-slide-up" style={{ padding: '1rem', marginBottom: '1rem' }}>
+            <form ref={addReminderFormRef} onSubmit={handleAddReminder} className="glass-card animate-slide-up" style={{ padding: '1rem', marginBottom: '1rem' }}>
               <input className="input-field" value={reminderForm.title} onChange={(e) => setReminderForm({ ...reminderForm, title: e.target.value })} placeholder="Reminder title..." style={{ marginBottom: '0.5rem' }} />
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 {reminderPresets.map((p) => (
@@ -426,7 +452,7 @@ function NoteCard({ note, isTodo, onToggle, onLongPress }: { note: any; isTodo: 
   const isCompleted = !!note.completedAt;
 
   return (
-    <div className="glass-card" style={{ padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }} {...longPressHandlers}>
+    <div className="glass-card no-select" style={{ padding: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }} {...longPressHandlers}>
       {isTodo && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggle(); }}
@@ -462,7 +488,7 @@ function AttachmentCard({ attachment, onLongPress }: { attachment: any; onLongPr
   const isImage = attachment.type === 'image';
 
   return (
-    <a href={getAttachmentUrl(attachment.id)} target="_blank" rel="noopener" style={{ textDecoration: 'none', color: 'inherit' }} {...longPressHandlers}>
+    <a href={getAttachmentUrl(attachment.id)} target="_blank" rel="noopener" className="no-select" style={{ textDecoration: 'none', color: 'inherit' }} {...longPressHandlers}>
       <div className="glass-card" style={{ overflow: 'hidden' }}>
         {isImage ? (
           <div style={{ aspectRatio: '1', background: 'var(--color-bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
