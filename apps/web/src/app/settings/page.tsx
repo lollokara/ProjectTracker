@@ -60,25 +60,28 @@ export default function SettingsPage() {
   async function handleEnableNotifications() {
     setEnablingPush(true);
     setPushError('');
+    let step = 'start';
     try {
-      const isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as any).standalone === true;
-
-      if (!window.isSecureContext) {
-        throw new Error('Secure context required (HTTPS)');
-      }
-
-      if (!isStandalone) {
-        throw new Error('Open the app from Home Screen, then enable notifications');
+      step = 'capability-check';
+      if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+        throw new Error('Push APIs not available on this device/context');
       }
 
       // Register service worker
-      const reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
-      await reg.update();
-      await navigator.serviceWorker.ready;
+      step = 'service-worker-register';
+      let reg = await navigator.serviceWorker.getRegistration('/');
+      if (!reg) {
+        reg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+      }
+      await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Service worker ready timeout')), 8000),
+        ),
+      ]);
 
       // Request permission
+      step = 'notification-permission';
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
         setPushStatus('denied');
@@ -86,9 +89,11 @@ export default function SettingsPage() {
       }
 
       // Get VAPID key
+      step = 'fetch-vapid-key';
       const { publicKey } = await getVapidKey();
 
       // Reuse existing subscription if present
+      step = 'push-subscribe';
       let subscription = await reg.pushManager.getSubscription();
       if (!subscription) {
         subscription = await reg.pushManager.subscribe({
@@ -98,12 +103,15 @@ export default function SettingsPage() {
       }
 
       // Register on server
+      step = 'register-subscription-server';
       await subscribePush(subscription);
       setPushStatus('granted');
     } catch (err: any) {
       console.error('Push setup failed:', err);
       setPushStatus('error');
-      setPushError(err?.message || 'Unknown push setup error');
+      const message = `Failed at ${step}: ${err?.message || 'Unknown push setup error'}`;
+      setPushError(message);
+      alert(message);
     } finally {
       setEnablingPush(false);
     }

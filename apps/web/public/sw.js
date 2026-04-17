@@ -1,12 +1,13 @@
 const CACHE_NAME = 'tracker-v1';
-const OFFLINE_URL = '/offline';
+const OFFLINE_URL = '/offline.html';
 
 // ── Install ──────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll([OFFLINE_URL]);
-    }),
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.add(OFFLINE_URL))
+      .catch(() => undefined),
   );
   self.skipWaiting();
 });

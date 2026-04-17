@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (error.name === 'ZodError') return NextResponse.json({ error: 'Validation failed', details: error.errors }, { status: 400 });
+    console.error('[push] subscribe error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
