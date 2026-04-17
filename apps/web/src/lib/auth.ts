@@ -7,8 +7,15 @@ export interface SessionData {
   isAuthenticated?: boolean;
 }
 
+const secret = process.env.SESSION_SECRET;
+
+if (process.env.NODE_ENV === 'production' && !secret) {
+  throw new Error('SESSION_SECRET environment variable is required in production');
+}
+
 export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || 'change-me-change-me-change-me-change-me-change-me-64ch',
+  // Use a fallback only in development
+  password: secret || 'dev-only-fallback-secret-at-least-32-chars-long',
   cookieName: 'tracker_session',
   cookieOptions: {
     secure: process.env.NODE_ENV === 'production',
