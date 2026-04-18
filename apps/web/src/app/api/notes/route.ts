@@ -6,6 +6,7 @@ import { createNoteSchema } from '@tracker/shared';
 import { requireAuth } from '@/lib/auth';
 import { embedNote } from '@/lib/notes-embeddings';
 import { enrichNote } from '@/lib/note-enrichment';
+import { suggestNoteKind } from '@/lib/note-classification';
 
 const NEAR_DUPLICATE_THRESHOLD = 0.85;
 
@@ -62,6 +63,8 @@ export async function POST(request: NextRequest) {
     // Track what was actually applied for the response
     let priorityApplied = false;
     let sourcePathApplied = false;
+    let kindApplied = false;
+    let kindConfidence: number | undefined;
 
     const shouldEnrich = projectRow?.autoEnrich !== false;
 
@@ -93,6 +96,23 @@ export async function POST(request: NextRequest) {
         if (!currentBody.includes(trailingLine)) {
           validated.body = currentBody ? `${currentBody}\n\n${trailingLine}` : trailingLine;
         }
+      }
+    }
+
+    // ── Tier-1 MiniLM kind classification ───────────────────────────────
+    // Only run when auto_enrich is on AND client did not explicitly pass a kind
+    if (shouldEnrich && rest.kind === undefined) {
+      try {
+        const suggestion = await suggestNoteKind(
+          `${validated.title}\n\n${validated.body ?? ''}`,
+        );
+        if (suggestion !== null) {
+          validated.kind = suggestion.kind;
+          kindApplied = true;
+          kindConfidence = suggestion.confidence;
+        }
+      } catch (classErr) {
+        console.error('[notes] suggestNoteKind failed (non-fatal):', classErr);
       }
     }
 
@@ -179,6 +199,9 @@ export async function POST(request: NextRequest) {
           sourcePathApplied,
           tags: enrichment.tags,
           mentions: enrichment.mentions,
+          kindApplied,
+          kindConfidence,
+          suggestedKind: kindApplied ? validated.kind : undefined,
         },
       },
       { status: 201 },

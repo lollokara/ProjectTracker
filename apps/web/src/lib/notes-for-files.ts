@@ -1,5 +1,5 @@
-import { db, notes } from '@tracker/db';
-import { and, eq, inArray, or, sql } from 'drizzle-orm';
+import { db, notes, codeEmbeddings } from '@tracker/db';
+import { and, eq, inArray, notInArray, or, sql, isNotNull, asc } from 'drizzle-orm';
 
 /**
  * Batch: count anchored notes for a list of (projectId, filePath) pairs.
@@ -102,5 +102,80 @@ export async function listAnchoredNotes(opts: {
     sourceLineEnd: r.sourceLineEnd,
     createdAt: r.createdAt.toISOString(),
     snippet: r.body ? r.body.trim().slice(0, 160) || null : null,
+  }));
+}
+
+export type SemanticNote = AnchoredNote & { similarity: number };
+
+/**
+ * kNN semantic related notes for a file.
+ * Uses the first code_embeddings row for the file as the query vector.
+ * Returns [] if no embedding exists for the file yet.
+ */
+export async function listSemanticRelatedNotes(opts: {
+  projectId: string;
+  filePath: string;
+  excludeIds: string[];
+  limit?: number;
+}): Promise<SemanticNote[]> {
+  const { projectId, filePath, excludeIds, limit = 5 } = opts;
+
+  // Get canonical file embedding: first code_embeddings row for this file, ordered by line_number ASC
+  const anchorRows = await db
+    .select({ embedding: codeEmbeddings.embedding })
+    .from(codeEmbeddings)
+    .where(
+      and(
+        eq(codeEmbeddings.projectId, projectId),
+        eq(codeEmbeddings.filePath, filePath),
+        isNotNull(codeEmbeddings.embedding),
+      ),
+    )
+    .orderBy(asc(codeEmbeddings.lineNumber))
+    .limit(1);
+
+  if (anchorRows.length === 0 || !anchorRows[0].embedding) return [];
+
+  const queryVec = anchorRows[0].embedding;
+  const vecStr = `[${queryVec.join(',')}]`;
+
+  // Build exclusion condition — notInArray requires a non-empty array
+  const excludeCondition =
+    excludeIds.length > 0
+      ? sql`${notes.id} NOT IN (${sql.join(excludeIds.map((id) => sql`${id}::uuid`), sql`, `)})`
+      : sql`TRUE`;
+
+  const rows = await db.execute(sql`
+    SELECT
+      id,
+      title,
+      kind,
+      priority,
+      completed_at,
+      source_line_start,
+      source_line_end,
+      created_at,
+      body,
+      1 - (embedding <=> ${vecStr}::vector) AS similarity
+    FROM notes
+    WHERE project_id = ${projectId}::uuid
+      AND embedding IS NOT NULL
+      AND ${excludeCondition}
+      AND (1 - (embedding <=> ${vecStr}::vector)) > 0.3
+    ORDER BY embedding <=> ${vecStr}::vector
+    LIMIT ${limit}
+  `);
+
+  return (rows as any[]).map((r) => ({
+    id: r.id as string,
+    title: r.title as string,
+    kind: r.kind as 'note' | 'snippet' | 'todo',
+    priority: r.priority as 'low' | 'medium' | 'high' | 'critical',
+    completedAt: r.completed_at ? (r.completed_at instanceof Date ? r.completed_at.toISOString() : String(r.completed_at)) : null,
+    sourceLineStart: r.source_line_start != null ? Number(r.source_line_start) : null,
+    sourceLineEnd: r.source_line_end != null ? Number(r.source_line_end) : null,
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    snippet: r.body ? String(r.body).trim().slice(0, 160) || null : null,
+    similarity: parseFloat(r.similarity as string) || 0,
   }));
 }

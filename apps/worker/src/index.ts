@@ -11,6 +11,7 @@ import { db, reminders, pushSubscriptions, activityEvents } from '@tracker/db';
 import { eq, lte, and, isNull } from 'drizzle-orm';
 import webpush from 'web-push';
 import { runIndexer } from './lib/indexer';
+import { backfillNoteEmbeddings } from './lib/notes-backfill';
 
 // ── Config ───────────────────────────────────────────────────────────
 const POLL_INTERVAL = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '60000', 10);
@@ -126,6 +127,12 @@ async function main() {
   // Initial runs
   await processDueReminders();
   await runIndexer();
+  try {
+    const backfilled = await backfillNoteEmbeddings();
+    if (backfilled > 0) console.log(`[notes-backfill] embedded ${backfilled} note(s)`);
+  } catch (err) {
+    console.error('[notes-backfill] tick error (non-fatal):', err);
+  }
 
   // Reminder polling loop
   setInterval(async () => {
@@ -133,6 +140,12 @@ async function main() {
       await processDueReminders();
     } catch (err) {
       console.error('[worker] Poll cycle error:', err);
+    }
+    try {
+      const backfilled = await backfillNoteEmbeddings();
+      if (backfilled > 0) console.log(`[notes-backfill] embedded ${backfilled} note(s)`);
+    } catch (err) {
+      console.error('[notes-backfill] tick error (non-fatal):', err);
     }
   }, POLL_INTERVAL);
 

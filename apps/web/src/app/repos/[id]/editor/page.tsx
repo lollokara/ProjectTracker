@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AppShell } from '@/components/AppShell';
 import { RepoFileViewer } from '@/components/RepoFileViewer';
 import { createNote, listAnchoredNotesForFile } from '@/lib/api';
+import type { SemanticFileNote } from '@/lib/api';
 import { Priority } from '@tracker/shared';
 import { ChevronLeft, X } from 'lucide-react';
 
@@ -75,6 +76,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
 
   // Anchored notes state
   const [anchoredNotes, setAnchoredNotes] = useState<AnchoredNote[]>([]);
+  const [semanticNotes, setSemanticNotes] = useState<SemanticFileNote[]>([]);
   const [peekOpen, setPeekOpen] = useState(false);
 
   // Parse #L<n> from hash after mount
@@ -86,14 +88,17 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
     }
   }, []);
 
-  // Fetch anchored notes on mount
+  // Fetch anchored + semantic notes on mount
   useEffect(() => {
     if (!filePath) return;
     listAnchoredNotesForFile(id, filePath)
-      .then(({ notes }) => {
-        setAnchoredNotes(notes);
+      .then((data) => {
+        const anchored = data.anchored ?? data.notes ?? [];
+        const semantic = data.semantic ?? [];
+        setAnchoredNotes(anchored);
+        setSemanticNotes(semantic);
         // Auto-open peek sheet if ?peek=notes and there are notes
-        if (peekParam === 'notes' && notes.length > 0) {
+        if (peekParam === 'notes' && (anchored.length > 0 || semantic.length > 0)) {
           setPeekOpen(true);
         }
       })
@@ -168,7 +173,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
       }}
     >
       {/* Notes badge — rendered on top of the viewer in the top-right corner */}
-      {anchoredNotes.length > 0 && (
+      {(anchoredNotes.length + semanticNotes.length) > 0 && (
         <button
           onClick={() => setPeekOpen((v) => !v)}
           style={{
@@ -188,7 +193,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
             cursor: 'pointer',
           }}
         >
-          📝 {anchoredNotes.length}
+          📝 {anchoredNotes.length + semanticNotes.length}
         </button>
       )}
 
@@ -235,7 +240,7 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
               }}
             >
               <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                📝 Anchored notes ({anchoredNotes.length})
+                📝 Notes ({anchoredNotes.length + semanticNotes.length})
               </span>
               <button
                 onClick={() => setPeekOpen(false)}
@@ -255,86 +260,103 @@ export default function EditorPage({ params }: { params: Promise<{ id: string }>
 
             {/* Scrollable list */}
             <div style={{ overflowY: 'auto', flex: 1, padding: '0.5rem 0' }}>
-              {anchoredNotes.map((note) => (
-                <div
-                  key={note.id}
-                  onClick={() => router.push(`/projects/${id}#note-${note.id}`)}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.2rem',
-                    padding: '0.6rem 1rem',
-                    cursor: 'pointer',
-                    opacity: note.completedAt ? 0.5 : 1,
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.85rem' }}>{KIND_ICON[note.kind] ?? '📝'}</span>
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        fontSize: '0.85rem',
-                        textDecoration: note.completedAt ? 'line-through' : 'none',
-                      }}
-                    >
-                      {note.title}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: '0.62rem',
-                        padding: '0.1rem 0.4rem',
-                        borderRadius: '9999px',
-                        background: 'rgba(255,255,255,0.06)',
-                        color: PRIORITY_COLORS[note.priority] ?? 'inherit',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {note.priority}
-                    </span>
-                    {note.sourceLineStart != null && (
-                      <span
-                        style={{
-                          fontSize: '0.62rem',
-                          color: 'var(--color-text-muted)',
-                          fontFamily: 'var(--font-mono)',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        L{note.sourceLineStart}
-                        {note.sourceLineEnd != null && note.sourceLineEnd !== note.sourceLineStart
-                          ? `–L${note.sourceLineEnd}`
-                          : ''}
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        marginLeft: 'auto',
-                        fontSize: '0.62rem',
-                        color: 'var(--color-text-muted)',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {relativeTime(note.createdAt)}
-                    </span>
+              {anchoredNotes.length === 0 && semanticNotes.length === 0 && (
+                <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '1.5rem', fontSize: '0.8rem' }}>
+                  No related notes yet. Anchor one by long-pressing a line.
+                </p>
+              )}
+
+              {/* Anchored section */}
+              {anchoredNotes.length > 0 && (
+                <>
+                  <div style={{ padding: '0.3rem 1rem 0.2rem', fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    📝 Anchored
                   </div>
-                  {note.snippet && (
-                    <p
+                  {anchoredNotes.map((note) => (
+                    <div
+                      key={note.id}
+                      onClick={() => router.push(`/projects/${id}#note-${note.id}`)}
                       style={{
-                        fontSize: '0.75rem',
-                        color: 'var(--color-text-secondary)',
-                        margin: 0,
-                        overflow: 'hidden',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.2rem',
+                        padding: '0.6rem 1rem',
+                        cursor: 'pointer',
+                        opacity: note.completedAt ? 0.5 : 1,
+                        borderBottom: '1px solid rgba(255,255,255,0.04)',
                       }}
                     >
-                      {note.snippet}
-                    </p>
-                  )}
-                </div>
-              ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.85rem' }}>{KIND_ICON[note.kind] ?? '📝'}</span>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem', textDecoration: note.completedAt ? 'line-through' : 'none' }}>
+                          {note.title}
+                        </span>
+                        <span style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', background: 'rgba(255,255,255,0.06)', color: PRIORITY_COLORS[note.priority] ?? 'inherit', whiteSpace: 'nowrap' }}>
+                          {note.priority}
+                        </span>
+                        {note.sourceLineStart != null && (
+                          <span style={{ fontSize: '0.62rem', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+                            L{note.sourceLineStart}{note.sourceLineEnd != null && note.sourceLineEnd !== note.sourceLineStart ? `–L${note.sourceLineEnd}` : ''}
+                          </span>
+                        )}
+                        <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                          {relativeTime(note.createdAt)}
+                        </span>
+                      </div>
+                      {note.snippet && (
+                        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                          {note.snippet}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Semantic / Possibly related section */}
+              {semanticNotes.length > 0 && (
+                <>
+                  <div style={{ padding: '0.3rem 1rem 0.2rem', fontSize: '0.68rem', fontWeight: 600, color: 'var(--color-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: anchoredNotes.length > 0 ? '0.5rem' : 0 }}>
+                    🔗 Possibly related
+                  </div>
+                  {semanticNotes.map((note) => (
+                    <div
+                      key={note.id}
+                      onClick={() => router.push(`/projects/${id}#note-${note.id}`)}
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.2rem',
+                        padding: '0.6rem 1rem',
+                        cursor: 'pointer',
+                        opacity: note.completedAt ? 0.43 : 0.85,
+                        borderBottom: '1px solid rgba(255,255,255,0.04)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.85rem' }}>{KIND_ICON[note.kind] ?? '📝'}</span>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem', textDecoration: note.completedAt ? 'line-through' : 'none' }}>
+                          {note.title}
+                        </span>
+                        <span style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', background: 'rgba(255,255,255,0.06)', color: PRIORITY_COLORS[note.priority] ?? 'inherit', whiteSpace: 'nowrap' }}>
+                          {note.priority}
+                        </span>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.62rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                          {relativeTime(note.createdAt)}
+                        </span>
+                        <span style={{ fontSize: '0.62rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', background: 'rgba(0,245,255,0.08)', color: 'var(--color-accent-primary, #00F5FF)', border: '1px solid rgba(0,245,255,0.2)', whiteSpace: 'nowrap' }}>
+                          {Math.round(note.similarity * 100)}% match
+                        </span>
+                      </div>
+                      {note.snippet && (
+                        <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: 0, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                          {note.snippet}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </motion.div>
         )}

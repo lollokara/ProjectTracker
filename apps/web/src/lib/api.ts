@@ -98,6 +98,9 @@ export type NoteEnrichmentApplied = {
   sourcePathApplied: boolean;
   tags: string[];
   mentions: string[];
+  kindApplied?: boolean;
+  kindConfidence?: number;
+  suggestedKind?: string;
 };
 
 export type CreateNoteResult =
@@ -299,19 +302,26 @@ export async function dismissSuggestion(projectId: string, suggestionId: string)
 }
 
 // ── Notes for files ───────────────────────────────────────────────────
+export type FileNote = {
+  id: string;
+  title: string;
+  kind: 'note' | 'snippet' | 'todo';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  completedAt: string | null;
+  sourceLineStart: number | null;
+  sourceLineEnd: number | null;
+  createdAt: string;
+  snippet: string | null;
+};
+
+export type SemanticFileNote = FileNote & { similarity: number };
+
 export async function listAnchoredNotesForFile(projectId: string, filePath: string) {
   return fetchAPI<{
-    notes: Array<{
-      id: string;
-      title: string;
-      kind: 'note' | 'snippet' | 'todo';
-      priority: 'low' | 'medium' | 'high' | 'critical';
-      completedAt: string | null;
-      sourceLineStart: number | null;
-      sourceLineEnd: number | null;
-      createdAt: string;
-      snippet: string | null;
-    }>;
+    /** Legacy field — same as anchored, kept for backward compat */
+    notes: FileNote[];
+    anchored: FileNote[];
+    semantic: SemanticFileNote[];
     filePath: string;
     projectId: string;
   }>(`/api/projects/${projectId}/files/notes?path=${encodeURIComponent(filePath)}`);

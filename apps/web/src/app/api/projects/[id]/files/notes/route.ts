@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { safeRepoRelativePath } from '@/lib/repo';
-import { listAnchoredNotes } from '@/lib/notes-for-files';
+import { listAnchoredNotes, listSemanticRelatedNotes, type SemanticNote } from '@/lib/notes-for-files';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -26,9 +26,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'path is required' }, { status: 400 });
     }
 
-    const notesList = await listAnchoredNotes({ projectId, filePath });
+    const anchored = await listAnchoredNotes({ projectId, filePath });
+    const anchoredIds = anchored.map((n) => n.id);
 
-    return NextResponse.json({ notes: notesList, filePath, projectId });
+    let semantic: SemanticNote[] = [];
+    try {
+      semantic = await listSemanticRelatedNotes({ projectId, filePath, excludeIds: anchoredIds });
+    } catch {
+      // semantic is non-fatal — degrade gracefully
+    }
+
+    return NextResponse.json({ anchored, semantic, notes: anchored, filePath, projectId });
   } catch (error: any) {
     if (error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -263,6 +263,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     sourcePathApplied: boolean;
     tags: string[];
     mentions: string[];
+    kindApplied?: boolean;
+    suggestedKind?: string;
   } | undefined) {
     if (!enrichment) return;
     const parts: string[] = [];
@@ -273,6 +275,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     }
     if (enrichment.priorityApplied) parts.push('🏷 Priority auto-set');
     if (enrichment.sourcePathApplied) parts.push('📎 Source file auto-linked');
+    if (enrichment.kindApplied && enrichment.suggestedKind) parts.push(`🏷 Detected as ${enrichment.suggestedKind}`);
     if (enrichment.tags.length > 0) parts.push(`#${enrichment.tags.join(' #')}`);
     if (parts.length === 0) return;
     setEnrichToast({ open: true, message: parts.join(' · ') });
