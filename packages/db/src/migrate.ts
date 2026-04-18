@@ -266,6 +266,11 @@ async function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS note_suggestions_dedup_idx ON note_suggestions(project_id, file_path, line_number, keyword, md5(text));
   `);
 
+  // auto_enrich flag on projects (Tier-0 rules-based enrichment)
+  await client.unsafe(`
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS auto_enrich boolean NOT NULL DEFAULT true;
+  `);
+
   console.log('[migrate] All tables created successfully');
   await client.end();
   process.exit(0);

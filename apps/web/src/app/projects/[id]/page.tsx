@@ -115,6 +115,14 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     pendingNote: Parameters<typeof createNote>[0] | null;
   }>({ open: false, nearDuplicates: [], pendingNote: null });
 
+  // Enrichment toast — surfaces auto-filled reminder/priority/source after a note is created
+  const [enrichToast, setEnrichToast] = useState<{ open: boolean; message: string }>({ open: false, message: '' });
+  useEffect(() => {
+    if (!enrichToast.open) return;
+    const t = setTimeout(() => setEnrichToast((s) => ({ ...s, open: false })), 3500);
+    return () => clearTimeout(t);
+  }, [enrichToast.open, enrichToast.message]);
+
   // Action menu
   const [actionMenu, setActionMenu] = useState<{ isOpen: boolean; type: string; item: any }>({
     isOpen: false, type: '', item: null,
@@ -228,6 +236,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           setDupDialog({ open: true, nearDuplicates: result.nearDuplicates, pendingNote: noteData });
           return;
         }
+        showEnrichmentToast(result.enrichment);
       }
       setNoteForm({
         title: '',
@@ -248,11 +257,33 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  function showEnrichmentToast(enrichment: {
+    reminderAt: string | null;
+    priorityApplied: boolean;
+    sourcePathApplied: boolean;
+    tags: string[];
+    mentions: string[];
+  } | undefined) {
+    if (!enrichment) return;
+    const parts: string[] = [];
+    if (enrichment.reminderAt) {
+      const when = new Date(enrichment.reminderAt);
+      const whenStr = when.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      parts.push(`⏰ Reminder set for ${whenStr}`);
+    }
+    if (enrichment.priorityApplied) parts.push('🏷 Priority auto-set');
+    if (enrichment.sourcePathApplied) parts.push('📎 Source file auto-linked');
+    if (enrichment.tags.length > 0) parts.push(`#${enrichment.tags.join(' #')}`);
+    if (parts.length === 0) return;
+    setEnrichToast({ open: true, message: parts.join(' · ') });
+  }
+
   async function handleForceCreateNote() {
     if (!dupDialog.pendingNote) return;
     setSavingNote(true);
     try {
-      await createNote({ ...dupDialog.pendingNote, force: true });
+      const result = await createNote({ ...dupDialog.pendingNote, force: true });
+      if (result.created) showEnrichmentToast(result.enrichment);
       setDupDialog({ open: false, nearDuplicates: [], pendingNote: null });
       setNoteForm({
         title: '',
@@ -785,6 +816,41 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           )}
         </div>
       )}
+
+      {/* Enrichment toast (auto-filled reminder / priority / tags) */}
+      <AnimatePresence>
+        {enrichToast.open && (
+          <motion.div
+            key="enrich-toast"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2 }}
+            style={{
+              position: 'fixed',
+              left: '50%',
+              bottom: '5rem',
+              transform: 'translateX(-50%)',
+              zIndex: 1100,
+              padding: '0.6rem 1rem',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(0, 245, 255, 0.12)',
+              border: '1px solid rgba(0, 245, 255, 0.35)',
+              color: 'var(--color-text-primary)',
+              fontSize: '0.82rem',
+              fontFamily: 'var(--font-mono)',
+              boxShadow: '0 6px 24px rgba(0, 245, 255, 0.18)',
+              maxWidth: 'calc(100vw - 2rem)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+            onClick={() => setEnrichToast((s) => ({ ...s, open: false }))}
+          >
+            {enrichToast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Near-duplicate detection dialog */}
       <AnimatePresence>

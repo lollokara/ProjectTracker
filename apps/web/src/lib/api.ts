@@ -92,8 +92,16 @@ export type NearDuplicate = {
   similarity: number;
 };
 
+export type NoteEnrichmentApplied = {
+  reminderAt: string | null;
+  priorityApplied: boolean;
+  sourcePathApplied: boolean;
+  tags: string[];
+  mentions: string[];
+};
+
 export type CreateNoteResult =
-  | { created: true; note: Note }
+  | { created: true; note: Note; enrichment: NoteEnrichmentApplied }
   | { created: false; nearDuplicates: NearDuplicate[] };
 
 export async function createNote(data: CreateNoteInput & { force?: boolean }): Promise<CreateNoteResult> {

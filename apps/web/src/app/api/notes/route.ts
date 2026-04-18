@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, notes, activityEvents } from '@tracker/db';
+import { db, notes, activityEvents, reminders, projects } from '@tracker/db';
 import { eq, desc, and } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { createNoteSchema } from '@tracker/shared';
 import { requireAuth } from '@/lib/auth';
 import { embedNote } from '@/lib/notes-embeddings';
+import { enrichNote } from '@/lib/note-enrichment';
 
 const NEAR_DUPLICATE_THRESHOLD = 0.85;
 
@@ -47,6 +48,53 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { force = false, ...rest } = body;
     const validated = createNoteSchema.parse(rest);
+
+    // ── Tier-0 rules-based enrichment ────────────────────────────────
+    // Check if the project has auto_enrich enabled
+    const [projectRow] = await db
+      .select({ autoEnrich: projects.autoEnrich })
+      .from(projects)
+      .where(eq(projects.id, validated.projectId))
+      .limit(1);
+
+    const enrichment = enrichNote({ title: validated.title, body: validated.body });
+
+    // Track what was actually applied for the response
+    let priorityApplied = false;
+    let sourcePathApplied = false;
+
+    const shouldEnrich = projectRow?.autoEnrich !== false;
+
+    if (shouldEnrich) {
+      // Priority: only fill if user left it at the schema default (undefined in input)
+      // createNoteSchema applies default('medium') so we check the raw input
+      if (rest.priority === undefined && enrichment.priority !== null) {
+        validated.priority = enrichment.priority;
+        priorityApplied = true;
+      }
+
+      // Source path: fill if user didn't provide one
+      if (!rest.sourcePath && !rest.sourceType && enrichment.suggestedSourcePath !== null) {
+        validated.sourcePath = enrichment.suggestedSourcePath;
+        validated.sourceType = 'repo_file';
+        sourcePathApplied = true;
+      }
+
+      // Tags & mentions: append trailing line to body if any found
+      if (enrichment.tags.length > 0 || enrichment.mentions.length > 0) {
+        const tagsPart = enrichment.tags.length > 0
+          ? `Tags: ${enrichment.tags.map((t) => `#${t}`).join(' ')}`
+          : '';
+        const mentionsPart = enrichment.mentions.length > 0
+          ? `Mentions: ${enrichment.mentions.map((m) => `@${m}`).join(' ')}`
+          : '';
+        const trailingLine = [tagsPart, mentionsPart].filter(Boolean).join(' · ');
+        const currentBody = validated.body ?? '';
+        if (!currentBody.includes(trailingLine)) {
+          validated.body = currentBody ? `${currentBody}\n\n${trailingLine}` : trailingLine;
+        }
+      }
+    }
 
     // Compute embedding (non-fatal if model fails)
     let vec: number[] | null = null;
@@ -96,6 +144,21 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
+    // Insert reminder if enrichment found a future date and user didn't supply one
+    if (shouldEnrich && enrichment.reminderAt !== null && !rest.reminderAt) {
+      try {
+        await db.insert(reminders).values({
+          projectId: note.projectId,
+          noteId: note.id,
+          scheduledFor: enrichment.reminderAt,
+          presetSource: 'custom',
+          status: 'pending',
+        });
+      } catch (reminderErr) {
+        console.error('[notes] reminder insert failed (non-fatal):', reminderErr);
+      }
+    }
+
     const eventType = validated.kind === 'todo' ? 'note_created' : 'note_created';
     await db.insert(activityEvents).values({
       projectId: validated.projectId,
@@ -106,7 +169,20 @@ export async function POST(request: NextRequest) {
       payload: { title: note.title, kind: note.kind },
     });
 
-    return NextResponse.json({ created: true, note }, { status: 201 });
+    return NextResponse.json(
+      {
+        created: true,
+        note,
+        enrichment: {
+          reminderAt: enrichment.reminderAt?.toISOString() ?? null,
+          priorityApplied,
+          sourcePathApplied,
+          tags: enrichment.tags,
+          mentions: enrichment.mentions,
+        },
+      },
+      { status: 201 },
+    );
   } catch (error: any) {
     if (error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

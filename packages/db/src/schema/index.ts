@@ -8,6 +8,7 @@ import {
   index,
   jsonb,
   integer,
+  boolean,
   customType,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -66,6 +67,7 @@ export const projects = pgTable(
     repoLastIndexedAt: timestamp('repo_last_indexed_at', { withTimezone: true }),
     repoIndexingProgress: integer('repo_indexing_progress'),
     repoIndexingTotal: integer('repo_indexing_total'),
+    autoEnrich: boolean('auto_enrich').notNull().default(true),
     searchVector: text('search_vector'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
