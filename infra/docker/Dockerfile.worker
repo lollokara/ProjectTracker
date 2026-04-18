@@ -1,4 +1,5 @@
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
+RUN apt-get update && apt-get install -y git ripgrep && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # ── Dependencies ──────────────────────────────────────────────────────
@@ -37,6 +38,8 @@ COPY --from=deps --chown=worker:nodejs /app/node_modules ./node_modules
 COPY --from=deps --chown=worker:nodejs /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=deps --chown=worker:nodejs /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps --chown=worker:nodejs /app/packages/shared/node_modules ./packages/shared/node_modules
+
+RUN mkdir -p /data/repos /data/models && chown -R worker:nodejs /data/repos /data/models
 
 USER worker
 

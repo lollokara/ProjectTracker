@@ -7,7 +7,7 @@ import * as schema from './schema/index.js';
 async function migrate() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    console.error('DATABASE_URL not set');
+    console.error('[migrate] DATABASE_URL NOT FOUND');
     process.exit(1);
   }
 
@@ -16,6 +16,9 @@ async function migrate() {
   const db = drizzle(client, { schema });
 
   console.log('[migrate] Creating tables...');
+
+  // Enable vector extension
+  await client.unsafe(`CREATE EXTENSION IF NOT EXISTS vector;`);
 
   // Create enums
   await client.unsafe(`
@@ -44,7 +47,7 @@ async function migrate() {
     EXCEPTION WHEN duplicate_object THEN null; END $$;
   `);
 
-  // Create tables
+  // Create tables & indexes
   await client.unsafe(`
     CREATE TABLE IF NOT EXISTS trusted_devices (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -81,17 +84,9 @@ async function migrate() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title VARCHAR(200) NOT NULL,
       slug VARCHAR(220) NOT NULL UNIQUE,
-      icon VARCHAR(50) NOT NULL DEFAULT 'folder',
-      theme_color VARCHAR(20) NOT NULL DEFAULT '#00F5FF',
       summary TEXT,
       status project_status NOT NULL DEFAULT 'active',
       priority priority NOT NULL DEFAULT 'medium',
-      repository_url TEXT,
-      repo_local_path TEXT,
-      repo_last_sync_at TIMESTAMPTZ,
-      repo_last_sync_status VARCHAR(30),
-      repo_last_sync_error TEXT,
-      repo_last_commit_sha VARCHAR(64),
       search_vector TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -101,11 +96,14 @@ async function migrate() {
 
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS icon VARCHAR(50) NOT NULL DEFAULT 'folder';
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS theme_color VARCHAR(20) NOT NULL DEFAULT '#00F5FF';
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS repository_url TEXT;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_local_path TEXT;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_sync_at TIMESTAMPTZ;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_sync_status VARCHAR(30);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_sync_error TEXT;
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_commit_sha VARCHAR(64);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_indexed_commit_sha VARCHAR(64);
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_indexed_at TIMESTAMPTZ;
 
     WITH palette AS (
       SELECT ARRAY[
@@ -151,11 +149,6 @@ async function migrate() {
     );
     CREATE INDEX IF NOT EXISTS notes_project_id_idx ON notes(project_id);
     CREATE INDEX IF NOT EXISTS notes_kind_idx ON notes(kind);
-    ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_type VARCHAR(30);
-    ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_path TEXT;
-    ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_line_start INTEGER;
-    ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_line_end INTEGER;
-    ALTER TABLE notes ADD COLUMN IF NOT EXISTS source_commit_sha VARCHAR(64);
 
     CREATE TABLE IF NOT EXISTS attachments (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -200,6 +193,17 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS activity_events_project_id_idx ON activity_events(project_id);
     CREATE INDEX IF NOT EXISTS activity_events_occurred_at_idx ON activity_events(occurred_at);
     CREATE INDEX IF NOT EXISTS activity_events_event_type_idx ON activity_events(event_type);
+
+    CREATE TABLE IF NOT EXISTS code_embeddings (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      line_number INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      embedding VECTOR(384) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS code_embeddings_project_id_idx ON code_embeddings(project_id);
   `);
 
   console.log('[migrate] All tables created successfully');

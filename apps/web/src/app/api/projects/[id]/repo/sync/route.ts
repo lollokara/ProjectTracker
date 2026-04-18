@@ -21,6 +21,10 @@ export async function POST(_request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    if (!project.repositoryUrl) {
+      return NextResponse.json({ error: 'Project has no repository URL' }, { status: 400 });
+    }
+
     const updateStatus = async (status: string) => {
       await db
         .update(projects)

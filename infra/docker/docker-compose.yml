@@ -17,6 +17,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
     build:
@@ -34,13 +39,20 @@ services:
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       ATTACHMENT_STORAGE_PATH: /data/attachments
       REPO_STORAGE_PATH: /data/repos
+      MODEL_CACHE_PATH: /data/models
       NODE_ENV: production
     volumes:
       - attachments:/data/attachments
       - repos:/data/repos
+      - model_cache:/data/models
     depends_on:
       db:
         condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   worker:
     build:
@@ -61,6 +73,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pg_data:

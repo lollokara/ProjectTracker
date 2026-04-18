@@ -63,14 +63,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [timeline, setTimeline] = useState<ActivityEvent[]>([]);
-  const [repoTree, setRepoTree] = useState<any[]>([]);
-  const [repoPath, setRepoPath] = useState('');
-  const [repoFile, setRepoFile] = useState<{ path: string; size: number; content: string; commitSha: string | null } | null>(null);
-  const [repoSearchQuery, setRepoSearchQuery] = useState('');
-  const [repoSearchMode, setRepoSearchMode] = useState<'exact' | 'semantic'>('exact');
-  const [repoSearchResults, setRepoSearchResults] = useState<any[]>([]);
-  const [repoSyncing, setRepoSyncing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'notes' | 'todos' | 'attachments' | 'reminders' | 'timeline' | 'code'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'todos' | 'attachments' | 'reminders' | 'timeline'>('notes');
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
 
@@ -121,8 +114,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     isOpen: false, type: '', item: null,
   });
 
-  const { highlightedLines, rawLines } = useMemo(() => {
-    if (!repoFile) return { highlightedLines: [], rawLines: [] };
+  
     
     // Normalize content: replace literal \n with real newlines for highlighting
     const content = repoFile.content.replace(/\\n/g, '\n');
@@ -181,64 +173,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     setTimeline(t);
   }
 
-  async function loadRepoTree(path = '') {
-    const tree = await getProjectRepoTree(id, path);
-    setRepoPath(tree.path);
-    setRepoTree(tree.items);
-  }
-
-  async function openRepoFile(path: string) {
-    const file = await getProjectRepoFile(id, path);
-    setRepoFile(file);
-  }
-
-  async function handleRepoSync() {
-    setRepoSyncing(true);
-    try {
-      await syncProjectRepo(id);
-      await loadProject();
-      await loadRepoTree('');
-    } finally {
-      setRepoSyncing(false);
+  
+  
     }
-  }
 
-  async function handleRepoSearchSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const q = repoSearchQuery.trim();
-    if (!q) {
-      setRepoSearchResults([]);
-      return;
-    }
-    const results = await searchProjectRepo(id, q, repoSearchMode);
+      const results = await searchProjectRepo(id, q, repoSearchMode);
     setRepoSearchResults(results.results);
   }
-  // Polling for repository sync status
-  useEffect(() => {
-    const isSyncingStatus = ['syncing', 'cloning', 'fetching', 'pulling'].includes(project?.repoLastSyncStatus || '');
-    if (!repoSyncing && !isSyncingStatus) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const p = await getProject(id);
-        setProject(p);
-        
-        const stillSyncing = ['syncing', 'cloning', 'fetching', 'pulling'].includes(p.repoLastSyncStatus || '');
-        if (!stillSyncing) {
-          setRepoSyncing(false);
-          if (p.repoLastSyncStatus === 'ok') {
-            loadRepoTree(repoPath || '');
-          }
-          clearInterval(interval);
-        }
-      } catch (err) {
-        console.error('Polling project failed:', err);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [id, repoSyncing, project?.repoLastSyncStatus]);
-
   useEffect(() => {
     loadProject();
     loadNotes();
@@ -247,13 +188,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     loadTimeline();
   }, [id]);
 
-  useEffect(() => {
-    if (activeTab !== 'code') return;
-    if (project?.repoLastSyncStatus !== 'ok') return;
-    loadRepoTree(repoPath || '').catch((error) => {
-      console.error('Failed to load repo tree:', error);
-    });
-  }, [activeTab, project?.repoLastSyncStatus]);
+  
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent | TouchEvent) => {
@@ -477,6 +412,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   );
 
   return (
+    <div style={{ '--color-accent-primary': project.themeColor, '--color-accent-primary-rgb': project.themeColor } as any}>
     <AppShell title={`${PROJECT_ICON_TO_EMOJI[project.icon] || '📁'} ${project.title}`}>
       {/* Project header */}
       {!editing ? (
@@ -546,7 +482,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.25rem', overflowX: 'auto', marginBottom: '1rem', paddingBottom: '0.25rem' }}>
-        {(['notes', 'todos', 'attachments', 'reminders', 'timeline', 'code'] as const).map((tab) => (
+        {(['notes', 'todos', 'attachments', 'reminders', 'timeline'] as const).map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={tabStyle(tab)}>
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
@@ -786,196 +722,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {activeTab === 'code' && (
-        <div>
-          <div className="glass-card" style={{ padding: '1rem', marginBottom: '0.75rem' }}>
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-              <button 
-                className="btn-primary" 
-                disabled={repoSyncing || !project.repositoryUrl} 
-                onClick={handleRepoSync}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                {repoSyncing ? (
-                  <>
-                    <motion.span
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                      style={{ display: 'inline-block' }}
-                    >
-                      ↻
-                    </motion.span>
-                    {['syncing', 'cloning', 'fetching', 'pulling'].includes(project.repoLastSyncStatus || '') 
-                      ? project.repoLastSyncStatus 
-                      : 'Syncing...'}
-                  </>
-                ) : project.repoLastSyncStatus === 'ok' ? '↻ Sync Repo' : 'Clone Repo'}
-              </button>
-              <span style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all', flex: 1 }}>
-                {project.repositoryUrl || 'No repository URL configured'}
-              </span>
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              <span>Last sync: {project.repoLastSyncAt ? new Date(project.repoLastSyncAt).toLocaleString() : 'never'}</span>
-              <span>Status: <span className={`badge ${
-                project.repoLastSyncStatus === 'ok' ? 'status-active' : 
-                ['syncing', 'cloning', 'fetching', 'pulling'].includes(project.repoLastSyncStatus || '') ? 'status-paused' : 
-                project.repoLastSyncStatus === 'failed' ? 'badge-critical' : 'status-archived'
-              }`}>{project.repoLastSyncStatus || 'not_synced'}</span></span>
-            </div>
-            {project.repoLastSyncError && (
-              <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--color-accent-danger)', padding: '0.5rem', background: 'rgba(255, 45, 85, 0.05)', borderRadius: 'var(--radius-sm)' }}>
-                Error: {project.repoLastSyncError}
-              </div>
-            )}
-          </div>
-
-          {project.repoLastSyncStatus === 'ok' && (
-            <>
-              <form onSubmit={handleRepoSearchSubmit} className="glass-card" style={{ padding: '1rem', marginBottom: '0.75rem' }}>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <input
-                    className="input-field"
-                    value={repoSearchQuery}
-                    onChange={(e) => setRepoSearchQuery(e.target.value)}
-                    placeholder="Search in code..."
-                    style={{ flex: 1 }}
-                  />
-                  <button className="btn-secondary" type="submit">Search</button>
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.75rem' }}>
-                  <button 
-                    type="button" 
-                    onClick={() => setRepoSearchMode('exact')}
-                    style={{ 
-                      flex: 1, padding: '0.4rem', borderRadius: 'var(--radius-sm)', border: 'none',
-                      background: repoSearchMode === 'exact' ? 'var(--color-accent-primary)' : 'var(--color-bg-glass)',
-                      color: repoSearchMode === 'exact' ? 'var(--color-bg-primary)' : 'var(--color-text-secondary)',
-                      fontWeight: 600, cursor: 'pointer'
-                    }}
-                  >
-                    Exact
-                  </button>
-                  <button 
-                    type="button" 
-                    onClick={() => setRepoSearchMode('semantic')}
-                    style={{ 
-                      flex: 1, padding: '0.4rem', borderRadius: 'var(--radius-sm)', border: 'none',
-                      background: repoSearchMode === 'semantic' ? 'var(--color-accent-primary)' : 'var(--color-bg-glass)',
-                      color: repoSearchMode === 'semantic' ? 'var(--color-bg-primary)' : 'var(--color-text-secondary)',
-                      fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem'
-                    }}
-                  >
-                    <span>✨</span> Semantic (Local AI)
-                  </button>
-                </div>
-              </form>
-
-              {repoSearchResults.length > 0 && (
-                <div className="glass-card" style={{ padding: '0.75rem', marginBottom: '0.75rem' }}>
-                  {repoSearchResults.slice(0, 20).map((res, idx) => (
-                    <button
-                      key={`${res.path}:${res.line}:${idx}`}
-                      onClick={async () => {
-                        await openRepoFile(res.path);
-                        setRepoSearchResults([]);
-                      }}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        background: 'transparent',
-                        border: 'none',
-                        borderBottom: '1px solid var(--color-border-glass)',
-                        padding: '0.4rem 0',
-                        color: 'var(--color-text-secondary)',
-                        cursor: 'pointer',
-                        fontSize: '0.75rem',
-                      }}
-                    >
-                      <strong>{res.path}:{res.line}</strong> {res.preview}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: '0.75rem' }}>
-                <div className="glass-card" style={{ padding: '0.75rem', maxHeight: '65vh', overflow: 'auto' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                    <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>{repoPath || '/'}</span>
-                    {repoPath && (
-                      <button
-                        className="btn-secondary"
-                        onClick={() => {
-                          const parent = repoPath.split('/').slice(0, -1).join('/');
-                          loadRepoTree(parent);
-                        }}
-                        style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}
-                      >
-                        Up
-                      </button>
-                    )}
-                  </div>
-                  {repoTree.map((item) => (
-                    <button
-                      key={`${item.path}-${item.sha || item.name}`}
-                      onClick={() => {
-                        if (item.type === 'tree') {
-                          loadRepoTree(item.path);
-                          setRepoFile(null);
-                        } else {
-                          openRepoFile(item.path);
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        display: 'block',
-                        padding: '0.35rem 0.25rem',
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'var(--color-text-secondary)',
-                        cursor: 'pointer',
-                        fontSize: '0.78rem',
-                      }}
-                    >
-                      {item.type === 'tree' ? '📂' : '📄'} {item.name}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="glass-card" style={{ padding: '0.75rem', maxHeight: '65vh', overflow: 'auto' }}>
-                  {!repoFile ? (
-                    <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
-                      Select a file from the tree to view it.
-                    </p>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem' }}>
-                        {repoFile.path} · {(repoFile.size / 1024).toFixed(1)} KB
-                      </div>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.76rem', lineHeight: 1.5 }}>
-                        {highlightedLines.map((html, idx) => (
-                          <CodeLine
-                            key={`${idx + 1}`}
-                            lineNo={idx + 1}
-                            html={html}
-                            rawLine={rawLines[idx]}
-                            repoFile={repoFile}
-                            onAddNote={(metadata) => {
-                              setNoteForm(metadata);
-                              setShowAddNote(true);
-                            }}
-                          />
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      
 
       {activeTab === 'timeline' && (
         <div>
@@ -1114,6 +861,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         }
       />
     </AppShell>
+    </div>
   );
 }
 
@@ -1170,99 +918,3 @@ function NoteCard({ note, isTodo, onToggle, onLongPress }: { note: Note; isTodo:
   );
 }
 
-function CodeLine({ 
-  lineNo, 
-  html, 
-  rawLine, 
-  repoFile, 
-  onAddNote 
-}: { 
-  lineNo: number; 
-  html: string; 
-  rawLine: string; 
-  repoFile: any; 
-  onAddNote: (metadata: any) => void;
-}) {
-  const onLongPress = () => {
-    onAddNote({
-      title: `Code comment ${repoFile.path}:${lineNo}`,
-      body: rawLine,
-      kind: 'note',
-      priority: 'medium',
-      sourceType: 'repo_line',
-      sourcePath: repoFile.path,
-      sourceLineStart: lineNo,
-      sourceLineEnd: lineNo,
-      sourceCommitSha: repoFile.commitSha || undefined,
-    });
-  };
-
-  const longPressHandlers = useLongPress(onLongPress);
-
-  return (
-    <div
-      style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', gap: '0.5rem', borderBottom: '1px dashed rgba(255,255,255,0.05)', padding: '0.15rem 0' }}
-      {...longPressHandlers}
-      className="no-select"
-    >
-      <button
-        title="Add note on this line"
-        onClick={onLongPress}
-        style={{ border: 'none', background: 'transparent', color: 'var(--color-accent-primary)', cursor: 'pointer', fontSize: '0.8rem' }}
-      >
-        +
-      </button>
-      <span style={{ color: 'var(--color-text-muted)', minWidth: '3ch' }}>{lineNo}</span>
-      <span 
-        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-        dangerouslySetInnerHTML={{ __html: html || ' ' }}
-      />
-    </div>
-  );
-}
-
-function AttachmentCard({ attachment, onLongPress }: { attachment: Attachment; onLongPress: () => void }) {
-  const longPressHandlers = useLongPress(onLongPress);
-  const isImage = attachment.type === 'image';
-
-  return (
-    <a href={getAttachmentUrl(attachment.id)} target="_blank" rel="noopener" className="no-select" style={{ textDecoration: 'none', color: 'inherit' }} {...longPressHandlers}>
-      <div className="glass-card" style={{ overflow: 'hidden' }}>
-        {isImage ? (
-          <div style={{ aspectRatio: '1', background: 'var(--color-bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src={getAttachmentUrl(attachment.id)} alt={attachment.caption || attachment.originalName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
-          </div>
-        ) : (
-          <div style={{ aspectRatio: '1', background: 'var(--color-bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>
-            📄
-          </div>
-        )}
-        <div style={{ padding: '0.625rem' }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {attachment.originalName}
-          </div>
-        </div>
-      </div>
-    </a>
-  );
-}
-
-function formatEventType(type: string): string {
-  const map: Record<string, string> = {
-    project_created: '📁 Project created',
-    project_updated: '✏️ Project updated',
-    project_deleted: '🗑 Project deleted',
-    note_created: '📝 Note added',
-    note_updated: '✏️ Note updated',
-    note_deleted: '🗑 Note deleted',
-    todo_completed: '✅ Todo completed',
-    todo_uncompleted: '↻ Todo uncompleted',
-    attachment_added: '📎 Attachment added',
-    attachment_removed: '🗑 Attachment removed',
-    reminder_created: '⏰ Reminder set',
-    reminder_delivered: '🔔 Reminder delivered',
-    device_paired: '📱 Device paired',
-    device_revoked: '🚫 Device revoked',
-  };
-  return map[type] || type;
-}

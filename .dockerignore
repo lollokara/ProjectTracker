@@ -1,0 +1,15 @@
+.git
+.omc
+.omx
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.env
+*.local
+tmp-*
+*.log
+.pnpm-store
+**/node_modules/.bin

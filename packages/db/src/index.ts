@@ -1,10 +1,8 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
+import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import * as schema from './schema/index';
 
-// Export a factory or just the db instance that will be initialized on first access or after a manual call if needed
-// But since we want to keep the same API for other apps:
-let dbInstance: any;
+let dbInstance: PostgresJsDatabase<typeof schema> | null = null;
 
 export const getDb = () => {
   if (!dbInstance) {
@@ -19,12 +17,12 @@ export const getDb = () => {
 };
 
 // Proxied db object to maintain existing API
-export const db = new Proxy({} as any, {
+export const db = new Proxy({} as any as PostgresJsDatabase<typeof schema>, {
   get(_, prop) {
-    return getDb()[prop];
+    return (getDb() as any)[prop];
   }
 });
 
 // Re-export schema for convenience
 export * from './schema/index';
-export type Database = ReturnType<typeof getDb>;
+export type Database = PostgresJsDatabase<typeof schema>;

@@ -185,7 +185,7 @@ function RepoCard({
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
           <div style={{ flex: 1 }}>
             <Link
-              href={`/projects/${project.id}`}
+              href={`/repos/${project.id}`}
               style={{ textDecoration: 'none', color: 'inherit' }}
             >
               <h3

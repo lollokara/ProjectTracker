@@ -34,6 +34,8 @@ export interface Project {
   repoLastSyncStatus: string | null;
   repoLastSyncError: string | null;
   repoLastCommitSha: string | null;
+  repoLastIndexedCommitSha: string | null;
+  repoLastIndexedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

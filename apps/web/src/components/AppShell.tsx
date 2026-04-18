@@ -4,7 +4,8 @@ import { ReactNode } from 'react';
 import { BottomNav } from './BottomNav';
 
 export function AppShell({ children, title }: { children: ReactNode; title?: string }) {
-  const headerHeight = 'calc(2.8rem + env(safe-area-inset-top))';
+  // Use a hardcoded height variable to avoid nested calc issues or excessive safe-area gaps
+  const headerHeight = '4rem';
 
   return (
     <div style={{ position: 'relative', zIndex: 1, minHeight: '100dvh' }}>
@@ -24,8 +25,7 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
             borderBottom: '1px solid var(--color-border-glass)',
-            padding: '0.5rem 1.25rem',
-            paddingTop: 'env(safe-area-inset-top)',
+            padding: 'env(safe-area-inset-top) 1.25rem 0', // Padding top only for safe area
           }}
         >
           <h1
@@ -46,10 +46,10 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
       <main
         style={{
           padding: title
-            ? `calc(${headerHeight} + 0.1rem) 1rem calc(4.5rem + env(safe-area-inset-bottom))`
+            ? `calc(${headerHeight} + 1rem) 1rem calc(4.5rem + env(safe-area-inset-bottom))`
             : '1rem 1rem 5rem',
           boxSizing: 'border-box',
-          minHeight: title ? `calc(100dvh - ${headerHeight})` : '100dvh',
+          minHeight: '100dvh',
           maxWidth: '800px',
           margin: '0 auto',
         }}
