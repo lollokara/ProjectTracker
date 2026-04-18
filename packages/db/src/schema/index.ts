@@ -230,3 +230,28 @@ export const codeEmbeddings = pgTable(
   },
   (t) => [index('code_embeddings_project_id_idx').on(t.projectId)],
 );
+
+// ── Code Files (File-Level Index for Hybrid Search) ───────────────────
+export const codeFiles = pgTable(
+  'code_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    filePath: text('file_path').notNull(),
+    fileName: text('file_name').notNull(),
+    extension: varchar('extension', { length: 20 }),
+    language: varchar('language', { length: 30 }),
+    sizeBytes: integer('size_bytes').notNull(),
+    lineCount: integer('line_count').notNull(),
+    titleSnippet: text('title_snippet'),
+    lastCommitAt: timestamp('last_commit_at', { withTimezone: true }),
+    lastCommitSha: varchar('last_commit_sha', { length: 64 }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('code_files_project_id_idx').on(t.projectId),
+    // unique index added via raw SQL migration; drizzle doesn't need to know about trgm GIN indexes
+  ],
+);

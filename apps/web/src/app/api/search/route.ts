@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, projects, notes, attachments } from '@tracker/db';
-import { sql, ilike, or, desc } from 'drizzle-orm';
+import { sql, ilike, or } from 'drizzle-orm';
 import { searchQuerySchema } from '@tracker/shared';
 import { requireAuth } from '@/lib/auth';
+import { hybridRepoSearch } from '@/lib/search';
 
-// GET /api/search?q=keyword&limit=25&offset=0
+// GET /api/search?q=keyword&limit=25&offset=0&includeRepos=true
 export async function GET(request: NextRequest) {
   try {
     await requireAuth();
     const { searchParams } = new URL(request.url);
     const params = searchQuerySchema.parse(Object.fromEntries(searchParams));
     const { q, limit, offset } = params;
+    // includeRepos accepted for back-compat but always computed now
+    // const includeRepos = searchParams.get('includeRepos') === 'true';
 
-    const searchPattern = `%${q}%`;
+    const escapedQ = q.replace(/[%_\\]/g, '\\$&');
+    const searchPattern = `%${escapedQ}%`;
 
     // Search across projects
     const projectResults = await db
@@ -22,6 +26,7 @@ export async function GET(request: NextRequest) {
         title: projects.title,
         summary: projects.summary,
         projectId: projects.id,
+        projectTitle: projects.title,
         createdAt: projects.createdAt,
       })
       .from(projects)
@@ -42,6 +47,7 @@ export async function GET(request: NextRequest) {
         title: notes.title,
         summary: notes.body,
         projectId: notes.projectId,
+        projectTitle: sql<string>`''`,
         createdAt: notes.createdAt,
       })
       .from(notes)
@@ -62,6 +68,7 @@ export async function GET(request: NextRequest) {
         title: attachments.originalName,
         summary: attachments.caption,
         projectId: attachments.projectId,
+        projectTitle: sql<string>`''`,
         createdAt: attachments.createdAt,
       })
       .from(attachments)
@@ -74,13 +81,17 @@ export async function GET(request: NextRequest) {
       )
       .limit(limit);
 
-    // Merge and sort
+    // Merge and sort text results
     const allResults = [...projectResults, ...noteResults, ...attachmentResults]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(offset, offset + limit);
 
+    // Hybrid repo search — always included
+    const codeResults = await hybridRepoSearch({ query: q, limit });
+
     return NextResponse.json({
       results: allResults,
+      codeResults,
       total: projectResults.length + noteResults.length + attachmentResults.length,
       query: q,
     });

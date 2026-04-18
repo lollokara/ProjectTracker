@@ -208,6 +208,37 @@ async function migrate() {
     CREATE INDEX IF NOT EXISTS code_embeddings_project_id_idx ON code_embeddings(project_id);
   `);
 
+  // pg_trgm extension + code_files table + indexes
+  await client.unsafe(`CREATE EXTENSION IF NOT EXISTS pg_trgm;`);
+
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS code_files (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      file_path text NOT NULL,
+      file_name text NOT NULL,
+      extension varchar(20),
+      language varchar(30),
+      size_bytes integer NOT NULL,
+      line_count integer NOT NULL,
+      title_snippet text,
+      last_commit_at timestamptz,
+      last_commit_sha varchar(64),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS code_files_project_id_idx ON code_files(project_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS code_files_project_path_idx ON code_files(project_id, file_path);
+    CREATE INDEX IF NOT EXISTS code_files_file_name_trgm_idx ON code_files USING gin (file_name gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS code_files_file_path_trgm_idx ON code_files USING gin (file_path gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS code_files_title_trgm_idx ON code_files USING gin (title_snippet gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS code_files_last_commit_at_idx ON code_files(last_commit_at DESC);
+
+    CREATE INDEX IF NOT EXISTS code_embeddings_vec_idx
+      ON code_embeddings USING hnsw (embedding vector_cosine_ops);
+  `);
+
   console.log('[migrate] All tables created successfully');
   await client.end();
   process.exit(0);

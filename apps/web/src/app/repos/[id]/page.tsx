@@ -1,49 +1,20 @@
 'use client';
 
-import { useState, useEffect, use, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, use, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AppShell } from '@/components/AppShell';
-import { useLongPress } from '@/components/ActionMenu';
 import {
   getProject,
-  syncProjectRepo, 
-  getProjectRepoTree, 
-  getProjectRepoFile, 
+  syncProjectRepo,
+  getProjectRepoTree,
   searchProjectRepo,
   createNote
 } from '@/lib/api';
 import { PROJECT_ICON_TO_EMOJI } from '@/lib/project-visuals';
-import { Project, Note, Priority } from '@tracker/shared';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-clike';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-yaml';
+import { Project, Priority } from '@tracker/shared';
 
-import { File, Folder, FileCode, FileJson, FileText, Image as ImageIcon, ChevronLeft, Search, RefreshCw, X } from 'lucide-react';
-
-function getLanguageFromExtension(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'ts':
-    case 'tsx': return 'typescript';
-    case 'js':
-    case 'jsx': return 'javascript';
-    case 'css': return 'css';
-    case 'md': return 'markdown';
-    case 'json': return 'json';
-    case 'yaml':
-    case 'yml': return 'yaml';
-    case 'sh':
-    case 'bash': return 'bash';
-    default: return 'clike';
-  }
-}
+import { File, Folder, FileCode, FileJson, FileText, Image as ImageIcon, ChevronLeft, Search, RefreshCw } from 'lucide-react';
 
 function getFileIcon(filename: string) {
   const ext = filename.split('.').pop()?.toLowerCase();
@@ -69,12 +40,11 @@ function hexToRgb(hex: string) {
 export default function RepoBrowserPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [project, setProject] = useState<Project | null>(null);
   const [repoTree, setRepoTree] = useState<any[]>([]);
   const [repoPath, setRepoPath] = useState('');
-  const [repoFile, setRepoFile] = useState<{ path: string; size: number; content: string; commitSha: string | null } | null>(null);
   const [repoSearchQuery, setRepoSearchQuery] = useState('');
-  const [repoSearchMode, setRepoSearchMode] = useState<'exact' | 'semantic'>('exact');
   const [repoSearchResults, setRepoSearchResults] = useState<any[]>([]);
   const [repoSyncing, setRepoSyncing] = useState(false);
 
@@ -84,11 +54,6 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
     body: string;
     kind: 'note' | 'snippet' | 'todo';
     priority: Priority;
-    sourceType?: 'repo_line' | 'repo_file';
-    sourcePath?: string;
-    sourceLineStart?: number;
-    sourceLineEnd?: number;
-    sourceCommitSha?: string;
   }>({
     title: '',
     body: '',
@@ -97,38 +62,6 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
   });
   const [savingNote, setSavingNote] = useState(false);
   const addNoteFormRef = useRef<HTMLFormElement | null>(null);
-
-  const { highlightedLines, rawLines } = useMemo(() => {
-    if (!repoFile) return { highlightedLines: [], rawLines: [] };
-    
-    const content = repoFile.content.replace(/\\n/g, '\n');
-    const rawLines = content.split('\n');
-    
-    const lang = getLanguageFromExtension(repoFile.path);
-    const grammar = Prism.languages[lang] || Prism.languages.clike;
-    const html = Prism.highlight(content, grammar, lang);
-    
-    const lines = html.split('\n');
-    const openTags: string[] = [];
-    const highlightedLines = lines.map((line) => {
-      let newLine = openTags.join('') + line;
-      const tagRegex = /<span class="([^"]+)">|<\/span>/g;
-      let match;
-      while ((match = tagRegex.exec(line)) !== null) {
-        if (match[0].startsWith('<span')) {
-          openTags.push(match[0]);
-        } else {
-          openTags.pop();
-        }
-      }
-      if (openTags.length > 0) {
-        newLine += '</span>'.repeat(openTags.length);
-      }
-      return newLine;
-    });
-    
-    return { highlightedLines, rawLines };
-  }, [repoFile]);
 
   async function loadProject() {
     const p = await getProject(id);
@@ -143,17 +76,6 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
       if (a.type !== 'tree' && b.type === 'tree') return 1;
       return a.name.localeCompare(b.name);
     }));
-  }
-
-  async function openRepoFile(path: string) {
-    const file = await getProjectRepoFile(id, path);
-    setRepoFile(file);
-    document.body.style.overflow = 'hidden';
-  }
-
-  function closeRepoFile() {
-    setRepoFile(null);
-    document.body.style.overflow = '';
   }
 
   async function handleRepoSync() {
@@ -174,7 +96,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
       setRepoSearchResults([]);
       return;
     }
-    const results = await searchProjectRepo(id, q, repoSearchMode);
+    const results = await searchProjectRepo(id, q);
     setRepoSearchResults(results.results);
   }
 
@@ -206,7 +128,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
       try {
         const p = await getProject(id);
         setProject(p);
-        
+
         const stillSyncing = ['syncing', 'cloning', 'fetching', 'pulling'].includes(p.repoLastSyncStatus || '');
         const stillIndexing = p.repoLastCommitSha !== p.repoLastIndexedCommitSha;
 
@@ -227,14 +149,20 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => {
     loadProject();
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [id]);
+
+  // Seed repoPath from ?path= query param on mount
+  useEffect(() => {
+    const pathParam = searchParams.get('path');
+    if (pathParam) {
+      setRepoPath(pathParam);
+    }
+  }, []);
 
   useEffect(() => {
     if (project?.repoLastSyncStatus !== 'ok') return;
-    loadRepoTree(repoPath || '').catch(console.error);
+    const pathParam = searchParams.get('path') || '';
+    loadRepoTree(pathParam).catch(console.error);
   }, [project?.repoLastSyncStatus]);
 
   if (!project) return (
@@ -246,9 +174,9 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
   const rgb = hexToRgb(project.themeColor);
 
   return (
-    <div style={{ 
-      '--color-accent-primary': project.themeColor, 
-      '--color-accent-primary-rgb': rgb || project.themeColor 
+    <div style={{
+      '--color-accent-primary': project.themeColor,
+      '--color-accent-primary-rgb': rgb || project.themeColor
     } as any}>
     <AppShell title={`${PROJECT_ICON_TO_EMOJI[project.icon] || '📁'} ${project.title} - Code`}>
       <div style={{ marginBottom: '1.25rem' }}>
@@ -262,9 +190,9 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
           <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
             {project.repositoryUrl || 'No repository URL configured'}
           </span>
-          <button 
-            className="btn-primary" 
-            disabled={repoSyncing || !project.repositoryUrl} 
+          <button
+            className="btn-primary"
+            disabled={repoSyncing || !project.repositoryUrl}
             onClick={handleRepoSync}
             style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
@@ -285,9 +213,9 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
             <span style={{ color: 'var(--color-accent-primary)' }}>✨ Indexed</span>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '150px' }}>
-              <span style={{ color: 'var(--color-accent-warning)', whiteSpace: 'nowrap' }}>⌛ Indexing AI Search...</span>
+              <span style={{ color: 'var(--color-accent-warning)', whiteSpace: 'nowrap' }}>⌛ Indexing...</span>
               <div style={{ flex: 1, height: '6px', background: 'var(--color-bg-glass)', borderRadius: '3px', overflow: 'hidden', position: 'relative' }}>
-                <motion.div 
+                <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.round(((project.repoIndexingProgress || 0) / (project.repoIndexingTotal || 1)) * 100)}%` }}
                   style={{ height: '100%', background: 'var(--color-accent-primary)', boxShadow: '0 0 10px var(--color-accent-primary)' }}
@@ -309,7 +237,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
       {project.repoLastSyncStatus === 'ok' && (
         <>
           <form onSubmit={handleRepoSearchSubmit} className="glass-card" style={{ padding: '1rem', marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
                 <input
@@ -322,32 +250,6 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
               </div>
               <button className="btn-secondary" type="submit">Search</button>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.8rem' }}>
-              <button 
-                type="button" 
-                onClick={() => setRepoSearchMode('exact')}
-                style={{ 
-                  flex: 1, padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: 'none',
-                  background: repoSearchMode === 'exact' ? 'var(--color-accent-primary)' : 'var(--color-bg-glass)',
-                  color: repoSearchMode === 'exact' ? 'var(--color-bg-primary)' : 'var(--color-text-secondary)',
-                  fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
-                }}
-              >
-                Exact Match (rg)
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setRepoSearchMode('semantic')}
-                style={{ 
-                  flex: 1, padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: 'none',
-                  background: repoSearchMode === 'semantic' ? 'var(--color-accent-primary)' : 'var(--color-bg-glass)',
-                  color: repoSearchMode === 'semantic' ? 'var(--color-bg-primary)' : 'var(--color-text-secondary)',
-                  fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', transition: 'all 0.2s'
-                }}
-              >
-                <span>✨</span> Semantic (Local AI)
-              </button>
-            </div>
           </form>
 
           {repoSearchResults.length > 0 && (
@@ -358,9 +260,10 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
               {repoSearchResults.map((res, idx) => (
                 <button
                   key={`${res.path}:${res.line}:${idx}`}
-                  onClick={async () => {
-                    await openRepoFile(res.path);
-                    setRepoSearchResults([]);
+                  onClick={() => {
+                    router.push(
+                      `/repos/${id}/editor?path=${encodeURIComponent(res.path)}${res.line ? '#L' + res.line : ''}`
+                    );
                   }}
                   style={{
                     width: '100%',
@@ -381,7 +284,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
                   onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-accent-primary)'}
                   onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--color-border-glass)'}
                 >
-                  <strong style={{ color: 'var(--color-text-primary)' }}>{res.path}:{res.line}</strong> 
+                  <strong style={{ color: 'var(--color-text-primary)' }}>{res.path}:{res.line}</strong>
                   <span style={{ fontFamily: 'var(--font-mono)', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{res.preview}</span>
                 </button>
               ))}
@@ -415,7 +318,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
                       if (item.type === 'tree') {
                         loadRepoTree(item.path);
                       } else {
-                        openRepoFile(item.path);
+                        router.push(`/repos/${id}/editor?path=${encodeURIComponent(item.path)}`);
                       }
                     }}
                     style={{
@@ -448,78 +351,10 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
         </>
       )}
 
-      {/* Full screen editor overlay */}
-      <AnimatePresence>
-        {repoFile && (
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            style={{ 
-              position: 'fixed', 
-              inset: 0, 
-              zIndex: 1000, 
-              background: 'var(--color-bg-primary)', 
-              display: 'flex', 
-              flexDirection: 'column',
-              paddingTop: 'env(safe-area-inset-top)',
-              paddingBottom: 'env(safe-area-inset-bottom)',
-            }}
-          >
-            <div style={{ 
-              padding: '0.75rem 1rem', 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center', 
-              borderBottom: '1px solid var(--color-border-glass)', 
-              background: 'rgba(10, 10, 20, 0.85)',
-              backdropFilter: 'blur(20px)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
-                <button
-                  onClick={closeRepoFile}
-                  style={{ background: 'var(--color-bg-glass)', border: '1px solid var(--color-border-glass)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.3rem', flexShrink: 0 }}
-                  title="Close file"
-                >
-                  <X size={18} />
-                </button>
-                <span style={{ fontSize: '0.85rem', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {repoFile.path}
-                </span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>
-                  {(repoFile.size / 1024).toFixed(1)} KB
-                </span>
-              </div>
-            </div>
-            
-            <div style={{ flex: 1, overflow: 'auto', padding: '0.5rem 0', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', lineHeight: 1.6 }}>
-              {highlightedLines.map((html, idx) => (
-                <CodeLine
-                  key={`${idx + 1}`}
-                  lineNo={idx + 1}
-                  html={html}
-                  rawLine={rawLines[idx]}
-                  repoFile={repoFile}
-                  onAddNote={(metadata) => {
-                    setNoteForm(metadata);
-                    setShowAddNote(true);
-                  }}
-                />
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {showAddNote && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)' }}>
           <form ref={addNoteFormRef} onSubmit={handleAddNote} className="glass-card animate-slide-up" style={{ padding: '1.25rem', width: '100%', maxWidth: '500px', border: '1px solid var(--color-accent-primary)' }}>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>Create Note from Code</h3>
-            {noteForm.sourcePath && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--color-accent-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-bg-glass)', padding: '0.5rem', borderRadius: 'var(--radius-sm)' }}>
-                <span>📍 {noteForm.sourcePath}:{noteForm.sourceLineStart}</span>
-              </div>
-            )}
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>Create Note</h3>
             <input className="input-field" value={noteForm.title} onChange={(e) => setNoteForm({ ...noteForm, title: e.target.value })} placeholder="Title..." required style={{ marginBottom: '0.75rem' }} autoFocus />
             <textarea className="input-field" value={noteForm.body} onChange={(e) => setNoteForm({ ...noteForm, body: e.target.value })} placeholder="Details..." rows={4} style={{ marginBottom: '0.75rem', resize: 'vertical' }} />
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -542,59 +377,6 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
         </div>
       )}
     </AppShell>
-    </div>
-  );
-}
-
-function CodeLine({ 
-  lineNo, 
-  html, 
-  rawLine, 
-  repoFile, 
-  onAddNote 
-}: { 
-  lineNo: number; 
-  html: string; 
-  rawLine: string; 
-  repoFile: any; 
-  onAddNote: (metadata: any) => void;
-}) {
-  const onLongPress = () => {
-    onAddNote({
-      title: `Code comment ${repoFile.path}:${lineNo}`,
-      body: rawLine,
-      kind: 'note',
-      priority: 'medium',
-      sourceType: 'repo_line',
-      sourcePath: repoFile.path,
-      sourceLineStart: lineNo,
-      sourceLineEnd: lineNo,
-      sourceCommitSha: repoFile.commitSha || undefined,
-    });
-  };
-
-  const longPressHandlers = useLongPress(onLongPress);
-
-  return (
-    <div
-      style={{ display: 'flex', gap: '0.35rem', borderBottom: '1px solid rgba(255,255,255,0.02)', padding: '0.05rem 0' }}
-      {...longPressHandlers}
-      className="no-select"
-    >
-      <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0, width: '1.8rem', justifyContent: 'flex-end', borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: '0.2rem', marginRight: '0.2rem' }}>
-        <button
-          title="Add note"
-          onClick={onLongPress}
-          style={{ border: 'none', background: 'transparent', color: 'var(--color-accent-primary)', cursor: 'pointer', fontSize: '0.65rem', padding: 0, opacity: 0.3 }}
-        >
-          +
-        </button>
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.65rem', userSelect: 'none', minWidth: '1rem', textAlign: 'right' }}>{lineNo}</span>
-      </div>
-      <span 
-        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1, fontSize: '0.75rem' }}
-        dangerouslySetInnerHTML={{ __html: html || ' ' }}
-      />
     </div>
   );
 }

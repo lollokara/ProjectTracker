@@ -180,6 +180,7 @@ function RepoCard({
           display: 'flex',
           flexDirection: 'column',
           gap: '1rem',
+          borderLeft: `3px solid ${project.themeColor || 'var(--color-accent-primary)'}`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>

@@ -135,9 +135,11 @@ export async function deleteReminder(id: string) {
 }
 
 // ── Search ───────────────────────────────────────────────────────────
-export async function search(q: string, limit = 25, offset = 0) {
+export async function search(q: string, opts: { limit?: number; offset?: number; includeRepos?: boolean } = {}) {
+  const { limit = 25, offset = 0, includeRepos = false } = opts;
   const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
-  return fetchAPI<{ results: any[]; total: number; query: string }>(`/api/search?${params}`);
+  if (includeRepos) params.set('includeRepos', 'true');
+  return fetchAPI<{ results: any[]; codeResults: any[]; total: number; query: string }>(`/api/search?${params}`);
 }
 
 // ── Timeline ─────────────────────────────────────────────────────────
@@ -230,9 +232,9 @@ export async function getProjectRepoFile(projectId: string, path: string) {
   );
 }
 
-export async function searchProjectRepo(projectId: string, q: string, mode = 'exact') {
-  const params = new URLSearchParams({ q, mode });
-  return fetchAPI<{ results: Array<{ path: string; line: number; preview: string }>; query: string; mode: string }>(
+export async function searchProjectRepo(projectId: string, q: string) {
+  const params = new URLSearchParams({ q });
+  return fetchAPI<{ results: Array<{ path: string; line: number; preview: string }>; query: string }>(
     `/api/projects/${projectId}/repo/search?${params}`,
   );
 }

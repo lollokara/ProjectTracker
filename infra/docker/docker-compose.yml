@@ -45,6 +45,7 @@ services:
       - attachments:/data/attachments
       - repos:/data/repos
       - model_cache:/data/models
+      - /opt/project-tracker/ssh_keys:/home/nextjs/.ssh:ro
     depends_on:
       db:
         condition: service_healthy

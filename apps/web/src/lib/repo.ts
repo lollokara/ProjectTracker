@@ -1,12 +1,21 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { mkdir, readFile, stat } from 'fs/promises';
+import { mkdir, readFile, rm, stat } from 'fs/promises';
 import path from 'path';
 
 const execFileAsync = promisify(execFile);
 
 export const MAX_FILE_BYTES = 1024 * 1024; // 1MB preview cap
 export const MAX_SEARCH_RESULTS = 200;
+
+const GIT_SSH_COMMAND =
+  'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -F /home/nextjs/.ssh/config';
+
+const GIT_ENV = {
+  ...process.env,
+  HOME: '/tmp',
+  GIT_SSH_COMMAND,
+};
 
 function rootDir() {
   return process.env.REPO_STORAGE_PATH || '/data/repos';
@@ -20,13 +29,16 @@ export async function ensureRepoRoot() {
   await mkdir(rootDir(), { recursive: true });
 }
 
-export async function runGit(args: string[], cwd?: string) {
-  const { stdout, stderr } = await execFileAsync('git', args, {
+// execFile already throws on non-zero exit with stderr in the error message.
+// We only need to return stdout — no custom stderr handling required.
+export async function runGit(args: string[], cwd?: string, timeoutMs = 60_000) {
+  const { stdout } = await execFileAsync('git', args, {
     cwd,
-    timeout: 60_000,
+    env: GIT_ENV,
+    timeout: timeoutMs,
     maxBuffer: 10 * 1024 * 1024,
   });
-  return { stdout: stdout.trim(), stderr: stderr.trim() };
+  return { stdout: stdout.trim() };
 }
 
 export async function syncRepo(
@@ -37,19 +49,36 @@ export async function syncRepo(
   await ensureRepoRoot();
   const dir = projectRepoDir(projectId);
 
+  // Convert https://github.com/user/repo to git@github.com:user/repo.git
+  let gitUrl = repositoryUrl;
+  if (gitUrl.startsWith('https://github.com/')) {
+    gitUrl = gitUrl.replace('https://github.com/', 'git@github.com:').replace(/\.git$/, '') + '.git';
+  }
+
+  // Separate existence check from git operations so a pull failure
+  // doesn't accidentally wipe a valid repo directory.
+  let hasRepo = false;
   try {
     await stat(path.join(dir, '.git'));
+    hasRepo = true;
+  } catch {
+    // .git not found — will clone
+  }
+
+  if (hasRepo) {
     if (onStatus) await onStatus('fetching');
     await runGit(['-C', dir, 'fetch', '--all', '--prune']);
     if (onStatus) await onStatus('pulling');
     await runGit(['-C', dir, 'pull', '--ff-only']);
-  } catch {
+  } else {
+    // Remove any partial/empty dir left by a previous failed clone
+    await rm(dir, { recursive: true, force: true });
     if (onStatus) await onStatus('cloning');
-    await runGit(['clone', '--depth', '1', repositoryUrl, dir]);
+    await runGit(['clone', '--depth', '1', gitUrl, dir], undefined, 600_000);
   }
 
-  const commit = await runGit(['-C', dir, 'rev-parse', 'HEAD']);
-  return { dir, commit: commit.stdout };
+  const { stdout: commit } = await runGit(['-C', dir, 'rev-parse', 'HEAD']);
+  return { dir, commit };
 }
 
 export function safeRepoRelativePath(inputPath: string) {
@@ -68,7 +97,6 @@ export function safeRepoRelativePath(inputPath: string) {
 export async function listTree(projectId: string, relativePath = '') {
   const dir = projectRepoDir(projectId);
   const rel = safeRepoRelativePath(relativePath);
-  // Use 'HEAD:path' syntax to list contents of the directory
   const target = rel ? `HEAD:${rel}` : 'HEAD';
   const { stdout } = await runGit(['-C', dir, 'ls-tree', target]);
   const rows = stdout
@@ -82,7 +110,6 @@ export async function listTree(projectId: string, relativePath = '') {
         type,
         sha,
         name,
-        // The path should be relative to the project root
         path: rel ? `${rel}/${name}` : name,
       };
     })
@@ -115,7 +142,8 @@ export async function searchRepo(projectId: string, query: string) {
   try {
     const { stdout } = await execFileAsync(
       'rg',
-      ['--line-number', '--no-heading', '--color', 'never', '--hidden', '--glob', '!.git', q, '.'],
+      // -F: treat query as fixed string (no regex) — prevents ReDoS
+      ['--line-number', '--no-heading', '--color', 'never', '-F', '--hidden', '--glob', '!.git', q, '.'],
       {
         cwd: dir,
         timeout: 60_000,
@@ -136,7 +164,7 @@ export async function searchRepo(projectId: string, query: string) {
         };
       });
   } catch (error: any) {
-    if (error.code === 1) return [];
+    if (error.code === 1) return []; // rg exit 1 = no matches
     throw error;
   }
 }
