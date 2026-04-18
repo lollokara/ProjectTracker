@@ -7,30 +7,88 @@ export type ProjectStatus = (typeof projectStatusEnum)[number];
 export const priorityEnum = ['low', 'medium', 'high', 'critical'] as const;
 export type Priority = (typeof priorityEnum)[number];
 
+export const projectIconEnum = [
+  'folder',
+  'rocket',
+  'cpu',
+  'server',
+  'terminal',
+  'globe',
+  'lightbulb',
+  'wrench',
+] as const;
+export type ProjectIcon = (typeof projectIconEnum)[number];
+
+export interface Project {
+  id: string;
+  title: string;
+  slug: string;
+  icon: ProjectIcon;
+  themeColor: string;
+  summary: string | null;
+  status: ProjectStatus;
+  priority: Priority;
+  repositoryUrl: string | null;
+  repoLocalPath: string | null;
+  repoLastSyncAt: string | null;
+  repoLastSyncStatus: string | null;
+  repoLastSyncError: string | null;
+  repoLastCommitSha: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const createProjectSchema = z.object({
   title: z.string().min(1).max(200),
   summary: z.string().max(2000).optional(),
   repositoryUrl: z.string().url().optional().or(z.literal('')),
+  icon: z.enum(projectIconEnum).default('folder'),
+  themeColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .optional(),
   status: z.enum(projectStatusEnum).default('active'),
   priority: z.enum(priorityEnum).default('medium'),
 });
-export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+export type CreateProjectInput = z.input<typeof createProjectSchema>;
 
 export const updateProjectSchema = createProjectSchema.partial();
-export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
+export type UpdateProjectInput = z.input<typeof updateProjectSchema>;
 
 // ── Note / Todo ──────────────────────────────────────────────────────
 export const noteKindEnum = ['note', 'snippet', 'todo'] as const;
 export type NoteKind = (typeof noteKindEnum)[number];
+
+export interface Note {
+  id: string;
+  projectId: string;
+  kind: NoteKind;
+  title: string;
+  body: string | null;
+  sourceType: string | null;
+  sourcePath: string | null;
+  sourceLineStart: number | null;
+  sourceLineEnd: number | null;
+  sourceCommitSha: string | null;
+  priority: Priority;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export const createNoteSchema = z.object({
   projectId: z.string().uuid(),
   kind: z.enum(noteKindEnum).default('note'),
   title: z.string().min(1).max(300),
   body: z.string().max(50000).optional(),
+  sourceType: z.enum(['repo_line', 'repo_file']).optional(),
+  sourcePath: z.string().max(4000).optional(),
+  sourceLineStart: z.number().int().min(1).optional(),
+  sourceLineEnd: z.number().int().min(1).optional(),
+  sourceCommitSha: z.string().max(64).optional(),
   priority: z.enum(priorityEnum).default('medium'),
 });
-export type CreateNoteInput = z.infer<typeof createNoteSchema>;
+export type CreateNoteInput = z.input<typeof createNoteSchema>;
 
 export const updateNoteSchema = createNoteSchema
   .partial()
@@ -38,7 +96,7 @@ export const updateNoteSchema = createNoteSchema
   .extend({
     completedAt: z.union([z.string().datetime({ offset: true }), z.null()]).optional(),
   });
-export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
+export type UpdateNoteInput = z.input<typeof updateNoteSchema>;
 
 // ── Attachment ───────────────────────────────────────────────────────
 export const allowedImageMimes = [
@@ -56,6 +114,19 @@ export const allowedDocMimes = [
 ] as const;
 export const allowedMimes = [...allowedImageMimes, ...allowedDocMimes] as const;
 export const maxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
+
+export interface Attachment {
+  id: string;
+  projectId: string;
+  noteId: string | null;
+  type: 'image' | 'document';
+  originalName: string;
+  mimeType: string;
+  storagePath: string;
+  fileSize: number | null;
+  caption: string | null;
+  createdAt: string;
+}
 
 export const attachmentMetaSchema = z.object({
   projectId: z.string().uuid(),
@@ -78,6 +149,18 @@ export type ReminderPreset = (typeof reminderPresetEnum)[number];
 export const reminderStatusEnum = ['pending', 'delivered', 'failed', 'cancelled'] as const;
 export type ReminderStatus = (typeof reminderStatusEnum)[number];
 
+export interface Reminder {
+  id: string;
+  projectId: string;
+  noteId: string | null;
+  scheduledFor: string;
+  presetSource: ReminderPreset;
+  status: ReminderStatus;
+  deliveredAt: string | null;
+  notificationPayload: any;
+  createdAt: string;
+}
+
 export const createReminderSchema = z.object({
   projectId: z.string().uuid(),
   noteId: z.string().uuid().optional(),
@@ -86,7 +169,7 @@ export const createReminderSchema = z.object({
   title: z.string().min(1).max(300),
   body: z.string().max(1000).optional(),
 });
-export type CreateReminderInput = z.infer<typeof createReminderSchema>;
+export type CreateReminderInput = z.input<typeof createReminderSchema>;
 
 // ── Activity Events ──────────────────────────────────────────────────
 export const actorEnum = ['system', 'trusted_device'] as const;
@@ -118,6 +201,17 @@ export const entityTypeEnum = [
   'device',
 ] as const;
 export type EntityType = (typeof entityTypeEnum)[number];
+
+export interface ActivityEvent {
+  id: string;
+  projectId: string;
+  actor: Actor;
+  eventType: EventType;
+  entityType: EntityType;
+  entityId: string | null;
+  payload: any;
+  occurredAt: string;
+}
 
 // ── Search ───────────────────────────────────────────────────────────
 export const searchQuerySchema = z.object({

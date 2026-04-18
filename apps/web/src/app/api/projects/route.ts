@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, projects, activityEvents } from '@tracker/db';
-import { eq, desc, sql, ilike, or } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { createProjectSchema } from '@tracker/shared';
 import { requireAuth } from '@/lib/auth';
+import { pickProjectColor, DEFAULT_PROJECT_ICON } from '@/lib/project-visuals';
 
 function slugify(text: string): string {
   return text
@@ -43,14 +44,23 @@ export async function POST(request: NextRequest) {
     await requireAuth();
     const body = await request.json();
     const validated = createProjectSchema.parse(body);
+    const usedColors = await db.select({ themeColor: projects.themeColor }).from(projects);
 
     const slug = slugify(validated.title) + '-' + Date.now().toString(36);
+    const themeColor =
+      validated.themeColor ||
+      pickProjectColor(
+        validated.title,
+        usedColors.map((p: { themeColor: string }) => p.themeColor),
+      );
 
     const [project] = await db
       .insert(projects)
       .values({
         ...validated,
         slug,
+        icon: validated.icon || DEFAULT_PROJECT_ICON,
+        themeColor,
         searchVector: [validated.title, validated.summary || ''].join(' '),
       })
       .returning();

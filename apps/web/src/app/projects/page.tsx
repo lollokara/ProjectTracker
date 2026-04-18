@@ -2,9 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { AnimatePresence, motion } from 'framer-motion';
 import { AppShell } from '@/components/AppShell';
 import { ActionMenu, useLongPress } from '@/components/ActionMenu';
 import { getProjects, createProject, deleteProject } from '@/lib/api';
+import { PROJECT_ICON_TO_EMOJI } from '@/lib/project-visuals';
+import { itemVariants, listTransition } from '@/lib/motion';
+import { Project } from '@tracker/shared';
 
 const statusColors: Record<string, string> = {
   active: 'status-active',
@@ -21,11 +25,12 @@ const priorityColors: Record<string, string> = {
 };
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newRepo, setNewRepo] = useState('');
   const [newSummary, setNewSummary] = useState('');
+  const [newIcon, setNewIcon] = useState<keyof typeof PROJECT_ICON_TO_EMOJI>('folder');
   const [loading, setLoading] = useState(true);
   const [actionMenu, setActionMenu] = useState<{ isOpen: boolean; projectId: string | null }>({
     isOpen: false,
@@ -51,16 +56,18 @@ export default function ProjectsPage() {
     e.preventDefault();
     if (!newTitle.trim()) return;
     try {
-      await createProject({
+      const created = await createProject({
         title: newTitle.trim(),
         repositoryUrl: newRepo.trim() || undefined,
         summary: newSummary.trim() || undefined,
+        icon: newIcon,
       });
+      setProjects((prev) => [created, ...prev]);
       setNewTitle('');
       setNewRepo('');
       setNewSummary('');
+      setNewIcon('folder');
       setShowCreate(false);
-      loadProjects();
     } catch (err) {
       console.error('Failed to create project:', err);
     }
@@ -68,10 +75,12 @@ export default function ProjectsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Delete this project and all its data?')) return;
+    const previous = projects;
+    setProjects((prev) => prev.filter((p) => p.id !== id));
     try {
       await deleteProject(id);
-      loadProjects();
     } catch (err) {
+      setProjects(previous);
       console.error('Failed to delete project:', err);
     }
   }
@@ -116,6 +125,18 @@ export default function ProjectsPage() {
             rows={2}
             style={{ marginBottom: '1rem', resize: 'vertical' }}
           />
+          <select
+            className="input-field"
+            value={newIcon}
+            onChange={(e) => setNewIcon(e.target.value as keyof typeof PROJECT_ICON_TO_EMOJI)}
+            style={{ marginBottom: '1rem' }}
+          >
+            {Object.entries(PROJECT_ICON_TO_EMOJI).map(([key, emoji]) => (
+              <option key={key} value={key}>
+                {emoji} {key}
+              </option>
+            ))}
+          </select>
           <button type="submit" className="btn-primary" style={{ width: '100%' }}>
             Create Project
           </button>
@@ -140,16 +161,18 @@ export default function ProjectsPage() {
           <p style={{ fontSize: '0.85rem' }}>Create your first project to get started</p>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {projects.map((project, idx) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              index={idx}
-              onLongPress={() => setActionMenu({ isOpen: true, projectId: project.id })}
-            />
-          ))}
-        </div>
+        <AnimatePresence initial={false}>
+          <motion.div layout style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {projects.map((project, idx) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                index={idx}
+                onLongPress={() => setActionMenu({ isOpen: true, projectId: project.id })}
+              />
+            ))}
+          </motion.div>
+        </AnimatePresence>
       )}
 
       <ActionMenu
@@ -183,27 +206,37 @@ function ProjectCard({
   index,
   onLongPress,
 }: {
-  project: any;
+  project: Project;
   index: number;
   onLongPress: () => void;
 }) {
   const longPressHandlers = useLongPress(onLongPress);
 
   return (
-    <Link
-      href={`/projects/${project.id}`}
-      className="no-select"
-      style={{ textDecoration: 'none', color: 'inherit' }}
-      {...longPressHandlers}
+    <motion.div
+      layout
+      variants={itemVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={{ ...listTransition, delay: index * 0.03 }}
     >
-      <div
-        className="glass-card"
-        style={{
-          padding: '1.25rem',
-          animation: `fade-in 0.4s ease-out ${index * 0.05}s both`,
-        }}
+      <Link
+        href={`/projects/${project.id}`}
+        className="no-select"
+        style={{ textDecoration: 'none', color: 'inherit' }}
+        {...longPressHandlers}
       >
+        <div
+          className="glass-card"
+          style={{
+            padding: '1.25rem',
+            borderColor: project.themeColor || 'var(--color-border-glass)',
+            boxShadow: `0 0 0 1px ${project.themeColor || 'transparent'}30, 0 10px 30px rgba(0, 0, 0, 0.2)`,
+          }}
+        >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '1.2rem' }}>{PROJECT_ICON_TO_EMOJI[project.icon] || '📁'}</span>
           <h3 style={{ fontSize: '1.05rem', fontWeight: 600, flex: 1 }}>{project.title}</h3>
           <span className={`badge ${statusColors[project.status] || ''}`}>{project.status}</span>
         </div>
@@ -242,7 +275,8 @@ function ProjectCard({
             {new Date(project.updatedAt).toLocaleDateString()}
           </span>
         </div>
-      </div>
-    </Link>
+        </div>
+      </Link>
+    </motion.div>
   );
 }

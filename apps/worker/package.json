@@ -13,6 +13,7 @@
   "dependencies": {
     "@tracker/db": "workspace:*",
     "@tracker/shared": "workspace:*",
+    "@xenova/transformers": "^2.17.2",
     "dotenv": "^16.4.0",
     "drizzle-orm": "^0.36.0",
     "web-push": "^3.6.0"

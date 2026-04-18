@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AppShell } from '@/components/AppShell';
-import { getDevices, revokeDevice, generateToken, getVapidKey, subscribePush, logout } from '@/lib/api';
+import { getDevices, revokeDevice, generateToken, getVapidKey, subscribePush, logout, getServerStatus } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 
 export default function SettingsPage() {
@@ -14,10 +14,14 @@ export default function SettingsPage() {
   const [pushError, setPushError] = useState<string>('');
   const [enablingPush, setEnablingPush] = useState(false);
   const [showRevoked, setShowRevoked] = useState(false);
+  const [serverStatus, setServerStatus] = useState<any>(null);
+  const [serverStatusError, setServerStatusError] = useState('');
+  const [loadingServerStatus, setLoadingServerStatus] = useState(false);
 
   useEffect(() => {
     loadDevices();
     checkPushStatus();
+    loadServerStatus();
   }, []);
 
   async function loadDevices() {
@@ -123,6 +127,19 @@ export default function SettingsPage() {
     router.push('/pair');
   }
 
+  async function loadServerStatus() {
+    setLoadingServerStatus(true);
+    setServerStatusError('');
+    try {
+      const data = await getServerStatus();
+      setServerStatus(data);
+    } catch (err: any) {
+      setServerStatusError(err.message || 'Unable to fetch server status');
+    } finally {
+      setLoadingServerStatus(false);
+    }
+  }
+
   return (
     <AppShell title="Settings">
       {/* Notifications */}
@@ -176,6 +193,58 @@ export default function SettingsPage() {
           >
             {enablingPush ? 'Enabling...' : 'Enable Notifications'}
           </button>
+        )}
+      </section>
+
+      {/* Server Status */}
+      <section className="glass-card" style={{ padding: '1.25rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>🖥️ Server Status</h2>
+          <button
+            className="btn-secondary"
+            onClick={loadServerStatus}
+            disabled={loadingServerStatus}
+            style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}
+          >
+            {loadingServerStatus ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+
+        {serverStatusError && (
+          <p style={{ color: 'var(--color-accent-danger)', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+            {serverStatusError}
+          </p>
+        )}
+
+        {!serverStatus ? (
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.8rem' }}>
+            {loadingServerStatus ? 'Loading status...' : 'No status data yet'}
+          </p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem' }}>
+            <StatusTile label="App Uptime" value={`${Math.floor(serverStatus.process.uptimeSeconds / 3600)}h`} />
+            <StatusTile
+              label="DB"
+              value={serverStatus.database.healthy ? `OK (${serverStatus.database.latencyMs ?? '-'}ms)` : 'DOWN'}
+              good={serverStatus.database.healthy}
+            />
+            <StatusTile label="Memory RSS" value={`${serverStatus.memory.rssMb} MB`} />
+            <StatusTile
+              label="Disk Used"
+              value={serverStatus.disk.available ? `${serverStatus.disk.usedPct}%` : 'Unavailable'}
+              good={serverStatus.disk.available}
+            />
+            <StatusTile label="Node" value={serverStatus.process.node} />
+            <StatusTile label="Host Uptime" value={`${Math.floor(serverStatus.os.uptimeSeconds / 3600)}h`} />
+          </div>
+        )}
+
+        {serverStatus && (
+          <div style={{ marginTop: '0.625rem', fontSize: '0.72rem', color: 'var(--color-text-muted)', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+            <div>Last refresh {new Date(serverStatus.now).toLocaleString()}</div>
+            <div>Attachments {serverStatus.disk.attachmentPath}</div>
+            <div>Repos {serverStatus.disk.repoPath}</div>
+          </div>
         )}
       </section>
 
@@ -329,6 +398,22 @@ export default function SettingsPage() {
         Log Out
       </button>
     </AppShell>
+  );
+}
+
+function StatusTile({ label, value, good }: { label: string; value: string; good?: boolean }) {
+  return (
+    <div
+      style={{
+        padding: '0.625rem',
+        borderRadius: 'var(--radius-md)',
+        border: `1px solid ${good === undefined ? 'var(--color-border-glass)' : good ? 'rgba(57,255,20,0.3)' : 'rgba(255,45,85,0.3)'}`,
+        background: 'rgba(255,255,255,0.03)',
+      }}
+    >
+      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: '0.2rem' }}>{label}</div>
+      <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{value}</div>
+    </div>
   );
 }
 

@@ -1,3 +1,15 @@
+import {
+  Project,
+  Note,
+  Attachment,
+  Reminder,
+  CreateProjectInput,
+  UpdateProjectInput,
+  CreateNoteInput,
+  UpdateNoteInput,
+  CreateReminderInput,
+} from '@tracker/shared';
+
 const API_BASE = '';
 
 async function fetchAPI<T>(url: string, options?: RequestInit): Promise<T> {
@@ -44,47 +56,47 @@ export async function logout() {
 // ── Projects ─────────────────────────────────────────────────────────
 export async function getProjects(status?: string) {
   const params = status ? `?status=${status}` : '';
-  return fetchAPI<any[]>(`/api/projects${params}`);
+  return fetchAPI<Project[]>(`/api/projects${params}`);
 }
 
 export async function getProject(id: string) {
-  return fetchAPI<any>(`/api/projects/${id}`);
+  return fetchAPI<Project>(`/api/projects/${id}`);
 }
 
-export async function createProject(data: any) {
-  return fetchAPI<any>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
+export async function createProject(data: CreateProjectInput) {
+  return fetchAPI<Project>('/api/projects', { method: 'POST', body: JSON.stringify(data) });
 }
 
-export async function updateProject(id: string, data: any) {
-  return fetchAPI<any>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export async function updateProject(id: string, data: UpdateProjectInput) {
+  return fetchAPI<Project>(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
 
 export async function deleteProject(id: string) {
-  return fetchAPI<any>(`/api/projects/${id}`, { method: 'DELETE' });
+  return fetchAPI<{ success: boolean }>(`/api/projects/${id}`, { method: 'DELETE' });
 }
 
 // ── Notes ────────────────────────────────────────────────────────────
 export async function getNotes(projectId: string, kind?: string) {
   const params = new URLSearchParams({ projectId });
   if (kind) params.set('kind', kind);
-  return fetchAPI<any[]>(`/api/notes?${params}`);
+  return fetchAPI<Note[]>(`/api/notes?${params}`);
 }
 
-export async function createNote(data: any) {
-  return fetchAPI<any>('/api/notes', { method: 'POST', body: JSON.stringify(data) });
+export async function createNote(data: CreateNoteInput) {
+  return fetchAPI<Note>('/api/notes', { method: 'POST', body: JSON.stringify(data) });
 }
 
-export async function updateNote(id: string, data: any) {
-  return fetchAPI<any>(`/api/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+export async function updateNote(id: string, data: UpdateNoteInput) {
+  return fetchAPI<Note>(`/api/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
 }
 
 export async function deleteNote(id: string) {
-  return fetchAPI<any>(`/api/notes/${id}`, { method: 'DELETE' });
+  return fetchAPI<{ success: boolean }>(`/api/notes/${id}`, { method: 'DELETE' });
 }
 
 // ── Attachments ──────────────────────────────────────────────────────
 export async function getAttachments(projectId: string) {
-  return fetchAPI<any[]>(`/api/attachments?projectId=${projectId}`);
+  return fetchAPI<Attachment[]>(`/api/attachments?projectId=${projectId}`);
 }
 
 export async function uploadAttachment(formData: FormData) {
@@ -93,11 +105,11 @@ export async function uploadAttachment(formData: FormData) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || `Upload failed: ${res.status}`);
   }
-  return res.json();
+  return res.json() as Promise<Attachment>;
 }
 
 export async function deleteAttachment(id: string) {
-  return fetchAPI<any>(`/api/attachments/${id}`, { method: 'DELETE' });
+  return fetchAPI<{ success: boolean }>(`/api/attachments/${id}`, { method: 'DELETE' });
 }
 
 export function getAttachmentUrl(id: string) {
@@ -107,19 +119,19 @@ export function getAttachmentUrl(id: string) {
 // ── Reminders ────────────────────────────────────────────────────────
 export async function getReminders(projectId?: string) {
   const params = projectId ? `?projectId=${projectId}` : '';
-  return fetchAPI<any[]>(`/api/reminders${params}`);
+  return fetchAPI<Reminder[]>(`/api/reminders${params}`);
 }
 
-export async function createReminder(data: any) {
-  return fetchAPI<any>('/api/reminders', { method: 'POST', body: JSON.stringify(data) });
+export async function createReminder(data: CreateReminderInput) {
+  return fetchAPI<Reminder>('/api/reminders', { method: 'POST', body: JSON.stringify(data) });
 }
 
 export async function cancelReminder(id: string) {
-  return fetchAPI<any>(`/api/reminders/${id}`, { method: 'DELETE' });
+  return fetchAPI<{ success: boolean }>(`/api/reminders/${id}`, { method: 'DELETE' });
 }
 
 export async function deleteReminder(id: string) {
-  return fetchAPI<any>(`/api/reminders/${id}`, { method: 'DELETE' });
+  return fetchAPI<{ success: boolean }>(`/api/reminders/${id}`, { method: 'DELETE' });
 }
 
 // ── Search ───────────────────────────────────────────────────────────
@@ -141,7 +153,7 @@ export async function getDevices() {
 }
 
 export async function revokeDevice(id: string) {
-  return fetchAPI<any>(`/api/devices/${id}`, { method: 'DELETE' });
+  return fetchAPI<{ success: boolean }>(`/api/devices/${id}`, { method: 'DELETE' });
 }
 
 // ── Push ─────────────────────────────────────────────────────────────
@@ -159,4 +171,68 @@ export async function subscribePush(subscription: PushSubscription) {
       userAgent: navigator.userAgent,
     }),
   });
+}
+
+export async function getServerStatus() {
+  return fetchAPI<{
+    now: string;
+    process: {
+      uptimeSeconds: number;
+      node: string;
+      platform: string;
+      pid: number;
+    };
+    memory: {
+      rssMb: number;
+      heapUsedMb: number;
+      heapTotalMb: number;
+    };
+    os: {
+      hostname: string;
+      uptimeSeconds: number;
+      loadAvg: number[];
+    };
+    database: {
+      healthy: boolean;
+      latencyMs: number | null;
+    };
+    disk: {
+      path: string;
+      totalMb: number;
+      freeMb: number;
+      usedMb: number;
+      usedPct: number;
+      available: boolean;
+    };
+  }>('/api/server/status');
+}
+
+export async function syncProjectRepo(projectId: string) {
+  return fetchAPI<{ success: boolean; commit: string; localPath: string }>(
+    `/api/projects/${projectId}/repo/sync`,
+    { method: 'POST' },
+  );
+}
+
+export async function getProjectRepoTree(projectId: string, path = '') {
+  const params = new URLSearchParams();
+  if (path) params.set('path', path);
+  const query = params.toString();
+  return fetchAPI<{ path: string; items: Array<{ type: string; name: string; path: string }> }>(
+    `/api/projects/${projectId}/repo/tree${query ? `?${query}` : ''}`,
+  );
+}
+
+export async function getProjectRepoFile(projectId: string, path: string) {
+  const params = new URLSearchParams({ path });
+  return fetchAPI<{ path: string; size: number; content: string; commitSha: string | null }>(
+    `/api/projects/${projectId}/repo/file?${params}`,
+  );
+}
+
+export async function searchProjectRepo(projectId: string, q: string, mode = 'exact') {
+  const params = new URLSearchParams({ q, mode });
+  return fetchAPI<{ results: Array<{ path: string; line: number; preview: string }>; query: string; mode: string }>(
+    `/api/projects/${projectId}/repo/search?${params}`,
+  );
 }

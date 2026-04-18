@@ -8,8 +8,16 @@ import {
   index,
   jsonb,
   integer,
+  customType,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+
+// Custom vector type for pgvector
+const vector = customType<{ data: number[] }>({
+  dataType() {
+    return 'vector(384)';
+  },
+});
 
 // ── Enums ────────────────────────────────────────────────────────────
 export const projectStatusEnum = pgEnum('project_status', [
@@ -43,10 +51,19 @@ export const projects = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     title: varchar('title', { length: 200 }).notNull(),
     slug: varchar('slug', { length: 220 }).notNull().unique(),
+    icon: varchar('icon', { length: 50 }).notNull().default('folder'),
+    themeColor: varchar('theme_color', { length: 20 }).notNull().default('#00F5FF'),
     summary: text('summary'),
     status: projectStatusEnum('status').notNull().default('active'),
     priority: priorityEnum('priority').notNull().default('medium'),
     repositoryUrl: text('repository_url'),
+    repoLocalPath: text('repo_local_path'),
+    repoLastSyncAt: timestamp('repo_last_sync_at', { withTimezone: true }),
+    repoLastSyncStatus: varchar('repo_last_sync_status', { length: 30 }),
+    repoLastSyncError: text('repo_last_sync_error'),
+    repoLastCommitSha: varchar('repo_last_commit_sha', { length: 64 }),
+    repoLastIndexedCommitSha: varchar('repo_last_indexed_commit_sha', { length: 64 }),
+    repoLastIndexedAt: timestamp('repo_last_indexed_at', { withTimezone: true }),
     searchVector: text('search_vector'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -68,6 +85,11 @@ export const notes = pgTable(
     kind: noteKindEnum('kind').notNull().default('note'),
     title: varchar('title', { length: 300 }).notNull(),
     body: text('body'),
+    sourceType: varchar('source_type', { length: 30 }),
+    sourcePath: text('source_path'),
+    sourceLineStart: integer('source_line_start'),
+    sourceLineEnd: integer('source_line_end'),
+    sourceCommitSha: varchar('source_commit_sha', { length: 64 }),
     priority: priorityEnum('priority').notNull().default('medium'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     searchVector: text('search_vector'),
@@ -188,4 +210,21 @@ export const pushSubscriptions = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
   (t) => [index('push_subscriptions_device_id_idx').on(t.deviceId)],
+);
+
+// ── Code Embeddings (Semantic Search) ────────────────────────────────
+export const codeEmbeddings = pgTable(
+  'code_embeddings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    filePath: text('file_path').notNull(),
+    lineNumber: integer('line_number').notNull(),
+    content: text('content').notNull(),
+    embedding: vector('embedding').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('code_embeddings_project_id_idx').on(t.projectId)],
 );

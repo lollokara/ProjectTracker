@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { NextResponse } from 'next/server';
-import { applySecurityHeaders } from './middleware.ts';
+import { applySecurityHeaders } from './middleware';
 
 describe('Middleware Hardening', () => {
   test('should inject required security headers', () => {
@@ -16,14 +16,9 @@ describe('Middleware Hardening', () => {
   });
 
   test('should inject HSTS in production', () => {
-    const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    
     const response = NextResponse.next();
-    applySecurityHeaders(response);
+    applySecurityHeaders(response, 'production');
     
     assert.ok(response.headers.get('Strict-Transport-Security'));
-    
-    process.env.NODE_ENV = originalEnv;
   });
 });

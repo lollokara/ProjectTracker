@@ -28,3 +28,4 @@ data/
 npm-debug.log*
 pnpm-debug.log*
 /.omx
+/.omc

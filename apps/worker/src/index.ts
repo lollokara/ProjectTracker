@@ -10,9 +10,11 @@ console.log('[worker] DATABASE_URL in index:', process.env.DATABASE_URL ? 'PRESE
 import { db, reminders, pushSubscriptions, activityEvents } from '@tracker/db';
 import { eq, lte, and, isNull } from 'drizzle-orm';
 import webpush from 'web-push';
+import { runIndexer } from './lib/indexer';
 
 // ── Config ───────────────────────────────────────────────────────────
 const POLL_INTERVAL = parseInt(process.env.WORKER_POLL_INTERVAL_MS || '60000', 10);
+const INDEX_INTERVAL = parseInt(process.env.WORKER_INDEX_INTERVAL_MS || '300000', 10); // 5 mins default
 
 const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
@@ -117,13 +119,15 @@ async function processDueReminders() {
 
 // ── Main Loop ────────────────────────────────────────────────────────
 async function main() {
-  console.log('[worker] Starting reminder worker...');
+  console.log('[worker] Starting project worker...');
   console.log(`[worker] Poll interval: ${POLL_INTERVAL}ms`);
+  console.log(`[worker] Index interval: ${INDEX_INTERVAL}ms`);
 
-  // Initial run
+  // Initial runs
   await processDueReminders();
+  await runIndexer();
 
-  // Polling loop
+  // Reminder polling loop
   setInterval(async () => {
     try {
       await processDueReminders();
@@ -131,6 +135,15 @@ async function main() {
       console.error('[worker] Poll cycle error:', err);
     }
   }, POLL_INTERVAL);
+
+  // Indexer polling loop
+  setInterval(async () => {
+    try {
+      await runIndexer();
+    } catch (err) {
+      console.error('[worker] Indexer cycle error:', err);
+    }
+  }, INDEX_INTERVAL);
 }
 
 main().catch((err) => {

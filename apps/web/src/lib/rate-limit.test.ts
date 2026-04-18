@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { rateLimit } from './rate-limit.ts';
+import { rateLimit } from './rate-limit';
 
 describe('Rate Limiter', () => {
   test('should allow requests within limit', () => {
