@@ -13,3 +13,5 @@ tmp-*
 *.log
 .pnpm-store
 **/node_modules/.bin
+ssh_keys
+**/ssh_keys

@@ -239,6 +239,33 @@ async function migrate() {
       ON code_embeddings USING hnsw (embedding vector_cosine_ops);
   `);
 
+  // notes embedding column + HNSW index (phase 2 semantic linking prep)
+  await client.unsafe(`
+    ALTER TABLE notes ADD COLUMN IF NOT EXISTS embedding vector(384);
+    CREATE INDEX IF NOT EXISTS notes_embedding_vec_idx ON notes USING hnsw (embedding vector_cosine_ops);
+  `);
+
+  // note_suggestions table (TODO/FIXME scraping)
+  await client.unsafe(`
+    CREATE TABLE IF NOT EXISTS note_suggestions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      file_path text NOT NULL,
+      line_number integer NOT NULL,
+      keyword varchar(20) NOT NULL,
+      text text NOT NULL,
+      source_commit_sha varchar(64),
+      status varchar(20) NOT NULL DEFAULT 'pending',
+      accepted_note_id uuid REFERENCES notes(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS note_suggestions_project_status_idx ON note_suggestions(project_id, status);
+    CREATE INDEX IF NOT EXISTS note_suggestions_project_path_idx ON note_suggestions(project_id, file_path);
+    CREATE UNIQUE INDEX IF NOT EXISTS note_suggestions_dedup_idx ON note_suggestions(project_id, file_path, line_number, keyword, md5(text));
+  `);
+
   console.log('[migrate] All tables created successfully');
   await client.end();
   process.exit(0);

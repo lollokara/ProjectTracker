@@ -238,3 +238,50 @@ export async function searchProjectRepo(projectId: string, q: string) {
     `/api/projects/${projectId}/repo/search?${params}`,
   );
 }
+
+// ── Note Suggestions ─────────────────────────────────────────────────
+export async function listSuggestions(
+  projectId: string,
+  opts?: { status?: string; limit?: number },
+) {
+  const params = new URLSearchParams();
+  if (opts?.status) params.set('status', opts.status);
+  if (opts?.limit != null) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  return fetchAPI<{ suggestions: any[] }>(
+    `/api/projects/${projectId}/suggestions${qs ? `?${qs}` : ''}`,
+  );
+}
+
+export async function acceptSuggestion(projectId: string, suggestionId: string) {
+  return fetchAPI<{ note: any; suggestion: any }>(
+    `/api/projects/${projectId}/suggestions/${suggestionId}/accept`,
+    { method: 'POST' },
+  );
+}
+
+export async function dismissSuggestion(projectId: string, suggestionId: string) {
+  return fetchAPI<{ suggestion: any }>(
+    `/api/projects/${projectId}/suggestions/${suggestionId}/dismiss`,
+    { method: 'POST' },
+  );
+}
+
+// ── Notes for files ───────────────────────────────────────────────────
+export async function listAnchoredNotesForFile(projectId: string, filePath: string) {
+  return fetchAPI<{
+    notes: Array<{
+      id: string;
+      title: string;
+      kind: 'note' | 'snippet' | 'todo';
+      priority: 'low' | 'medium' | 'high' | 'critical';
+      completedAt: string | null;
+      sourceLineStart: number | null;
+      sourceLineEnd: number | null;
+      createdAt: string;
+      snippet: string | null;
+    }>;
+    filePath: string;
+    projectId: string;
+  }>(`/api/projects/${projectId}/files/notes?path=${encodeURIComponent(filePath)}`);
+}

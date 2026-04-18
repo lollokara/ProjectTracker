@@ -1,4 +1,4 @@
-import { db, projects, codeEmbeddings, codeFiles } from '@tracker/db';
+import { db, projects, codeEmbeddings, codeFiles, noteSuggestions } from '@tracker/db';
 import { eq, and, isNotNull, sql, inArray } from 'drizzle-orm';
 import { readFile, readdir, stat } from 'fs/promises';
 import { execFile } from 'child_process';
@@ -37,6 +37,66 @@ interface CodeFileRow {
 }
 
 type GitLogMap = Map<string, { lastCommitAt: Date; lastCommitSha: string }>;
+
+interface SuggestionRow {
+  projectId: string;
+  filePath: string;
+  lineNumber: number;
+  keyword: string;
+  text: string;
+  sourceCommitSha: string | null;
+  status: 'pending';
+}
+
+const SUGGESTION_KEYWORDS = ['TODO', 'FIXME', 'HACK', 'XXX', 'NOTE'];
+
+// Extensions where comment detection is unreliable — skip scanning
+const SKIP_SCAN_EXTENSIONS = new Set(['.json', '.yaml', '.yml', '.sql', '.md']);
+
+// Comment-opener markers that must appear before the keyword on the same line
+const COMMENT_MARKERS = ['//', '#', '--', '/*', ' * ', '"""', "'''", ';'];
+
+const SUGGESTION_RE = /(^|[^A-Za-z0-9_])(TODO|FIXME|HACK|XXX|NOTE)(?:\([^)]{0,40}\))?\s*[:\-]?\s*(.+?)\s*(?:\*\/\s*)?$/i;
+
+function scanSuggestions(
+  relPath: string,
+  content: string,
+  sourceCommitSha: string | null,
+  projectId: string,
+): SuggestionRow[] {
+  const rows: SuggestionRow[] = [];
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = SUGGESTION_RE.exec(line);
+    if (!match) continue;
+
+    // Determine where the keyword starts in the line
+    const keywordStart = match.index + match[1].length;
+
+    // Require a comment marker to appear before the keyword on this line
+    const linePrefix = line.slice(0, keywordStart);
+    const hasCommentMarker = COMMENT_MARKERS.some((m) => linePrefix.includes(m));
+    if (!hasCommentMarker) continue;
+
+    const keyword = match[2].toUpperCase();
+    const text = match[3].trim().slice(0, 500);
+    if (!text) continue;
+
+    rows.push({
+      projectId,
+      filePath: relPath,
+      lineNumber: i + 1,
+      keyword,
+      text,
+      sourceCommitSha,
+      status: 'pending',
+    });
+  }
+
+  return rows;
+}
 
 function deriveLanguage(ext: string): string {
   switch (ext) {
@@ -249,6 +309,16 @@ async function incrementalIndex(
           inArray(codeFiles.filePath, affectedFiles)
         )
       );
+    // Delete pending suggestions for affected files only
+    await db
+      .delete(noteSuggestions)
+      .where(
+        and(
+          eq(noteSuggestions.projectId, project.id),
+          inArray(noteSuggestions.filePath, affectedFiles),
+          eq(noteSuggestions.status, 'pending')
+        )
+      );
   }
 
   // Build git log map once for this project
@@ -257,17 +327,18 @@ async function incrementalIndex(
   // Re-index only changed (non-deleted) files
   const chunks: FileChunk[] = [];
   const fileRows: CodeFileRow[] = [];
+  const suggestionRows: SuggestionRow[] = [];
   for (const relPath of changedFiles) {
     const fullPath = path.join(projectDir, relPath);
     try {
-      await processFile(project.id, fullPath, relPath, chunks, fileRows, gitLogMap);
+      await processFile(project.id, fullPath, relPath, chunks, fileRows, gitLogMap, suggestionRows);
     } catch {
       // File may have been deleted — skip
     }
   }
 
-  if (chunks.length > 0 || fileRows.length > 0) {
-    await insertChunks(project, chunks, fileRows);
+  if (chunks.length > 0 || fileRows.length > 0 || suggestionRows.length > 0) {
+    await insertChunks(project, chunks, fileRows, suggestionRows);
   }
 
   await db
@@ -284,7 +355,8 @@ async function fullIndex(project: any, projectDir: string, newSha: string) {
 
   const chunks: FileChunk[] = [];
   const fileRows: CodeFileRow[] = [];
-  await walkDir(project.id, projectDir, projectDir, chunks, fileRows, gitLogMap);
+  const suggestionRows: SuggestionRow[] = [];
+  await walkDir(project.id, projectDir, projectDir, chunks, fileRows, gitLogMap, suggestionRows);
 
   console.log(`[indexer] Full index: ${chunks.length} chunks for ${project.title}. Generating embeddings...`);
 
@@ -293,11 +365,19 @@ async function fullIndex(project: any, projectDir: string, newSha: string) {
     .set({ repoIndexingProgress: 0, repoIndexingTotal: chunks.length })
     .where(eq(projects.id, project.id));
 
-  // Delete old embeddings and file rows, then insert new ones in a transaction
+  // Delete old embeddings, file rows, and pending suggestions; insert new ones in a transaction
   await db.transaction(async (tx) => {
     await tx.delete(codeEmbeddings).where(eq(codeEmbeddings.projectId, project.id));
     await tx.delete(codeFiles).where(eq(codeFiles.projectId, project.id));
-    await insertChunks(project, chunks, fileRows, tx);
+    await tx
+      .delete(noteSuggestions)
+      .where(
+        and(
+          eq(noteSuggestions.projectId, project.id),
+          eq(noteSuggestions.status, 'pending')
+        )
+      );
+    await insertChunks(project, chunks, fileRows, suggestionRows, tx);
   });
 
   await db
@@ -308,7 +388,13 @@ async function fullIndex(project: any, projectDir: string, newSha: string) {
   console.log(`[indexer] Full index complete for: ${project.title}`);
 }
 
-async function insertChunks(project: any, chunks: FileChunk[], fileRows: CodeFileRow[], tx: any = db) {
+async function insertChunks(
+  project: any,
+  chunks: FileChunk[],
+  fileRows: CodeFileRow[],
+  suggestionRows: SuggestionRow[],
+  tx: any = db,
+) {
   const BATCH_SIZE = 50;
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
@@ -354,6 +440,16 @@ async function insertChunks(project: any, chunks: FileChunk[], fileRows: CodeFil
       });
     }
   }
+
+  // Insert suggestion rows (dedup via unique index on project_id, file_path, line_number, keyword, md5(text))
+  if (suggestionRows.length > 0) {
+    const SUGG_BATCH = 200;
+    for (let i = 0; i < suggestionRows.length; i += SUGG_BATCH) {
+      const batch = suggestionRows.slice(i, i + SUGG_BATCH);
+      await tx.insert(noteSuggestions).values(batch).onConflictDoNothing();
+    }
+    console.log(`[indexer] ${suggestionRows.length} suggestion(s) scanned for ${project.title}`);
+  }
 }
 
 async function walkDir(
@@ -363,6 +459,7 @@ async function walkDir(
   chunks: FileChunk[],
   fileRows: CodeFileRow[],
   gitLogMap: GitLogMap,
+  suggestionRows: SuggestionRow[],
 ) {
   const entries = await readdir(current, { withFileTypes: true });
 
@@ -374,11 +471,11 @@ async function walkDir(
       if (['.git', 'node_modules', 'dist', '.next', '__pycache__', 'vendor', '.venv'].includes(entry.name)) {
         continue;
       }
-      await walkDir(projectId, root, fullPath, chunks, fileRows, gitLogMap);
+      await walkDir(projectId, root, fullPath, chunks, fileRows, gitLogMap, suggestionRows);
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (SUPPORTED_EXTENSIONS.has(ext)) {
-        await processFile(projectId, fullPath, relPath, chunks, fileRows, gitLogMap);
+        await processFile(projectId, fullPath, relPath, chunks, fileRows, gitLogMap, suggestionRows);
       }
     }
   }
@@ -391,6 +488,7 @@ async function processFile(
   chunks: FileChunk[],
   fileRows: CodeFileRow[],
   gitLogMap: GitLogMap,
+  suggestionRows: SuggestionRow[],
 ) {
   try {
     const fileStat = await stat(fullPath);
@@ -414,6 +512,12 @@ async function processFile(
       lastCommitAt: gitInfo?.lastCommitAt ?? null,
       lastCommitSha: gitInfo?.lastCommitSha ?? null,
     });
+
+    // Scan for TODO/FIXME suggestions (skip unreliable extensions)
+    if (!SKIP_SCAN_EXTENSIONS.has(ext)) {
+      const hits = scanSuggestions(relPath, content, gitInfo?.lastCommitSha ?? null, projectId);
+      for (const hit of hits) suggestionRows.push(hit);
+    }
 
     // Build chunk rows (unchanged logic)
     for (let i = 0; i < lines.length; i += CHUNK_SIZE - CHUNK_OVERLAP) {

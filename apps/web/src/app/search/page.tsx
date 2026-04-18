@@ -197,6 +197,28 @@ export default function SearchPage() {
                       >
                         {match.projectTitle}
                       </span>
+                      {match.noteCount > 0 && (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(
+                              `/repos/${match.projectId}/editor?path=${encodeURIComponent(match.filePath)}&peek=notes` +
+                                (match.lineNumber ? `#L${match.lineNumber}` : '')
+                            );
+                          }}
+                          style={{
+                            fontSize: '0.65rem',
+                            padding: '0.15rem 0.45rem',
+                            borderRadius: '9999px',
+                            background: 'rgba(255,215,0,0.12)',
+                            color: 'var(--color-accent-warning)',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          📝 {match.noteCount}
+                        </span>
+                      )}
                       <span
                         style={{
                           marginLeft: 'auto',

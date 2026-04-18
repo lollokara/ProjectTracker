@@ -12,6 +12,7 @@ import {
   getReminders, createReminder, deleteReminder,
   getTimeline,
   syncProjectRepo, getProjectRepoTree, getProjectRepoFile, searchProjectRepo,
+  listSuggestions, acceptSuggestion, dismissSuggestion,
 } from '@/lib/api';
 import { PROJECT_ICON_TO_EMOJI } from '@/lib/project-visuals';
 import { itemVariants, listTransition } from '@/lib/motion';
@@ -59,7 +60,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [timeline, setTimeline] = useState<ActivityEvent[]>([]);
-  const [activeTab, setActiveTab] = useState<'notes' | 'todos' | 'attachments' | 'reminders' | 'timeline'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'todos' | 'attachments' | 'reminders' | 'timeline' | 'suggestions'>('notes');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
 
@@ -136,12 +138,22 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     setTimeline(t);
   }
 
+  async function loadSuggestions() {
+    try {
+      const { suggestions: s } = await listSuggestions(id, { status: 'pending' });
+      setSuggestions(s);
+    } catch {
+      // suggestions are non-critical; silently skip if unavailable
+    }
+  }
+
   useEffect(() => {
     loadProject();
     loadNotes();
     loadAttachments();
     loadReminders();
     loadTimeline();
+    loadSuggestions();
   }, [id]);
 
   useEffect(() => {
@@ -446,6 +458,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
         ))}
+        <button onClick={() => setActiveTab('suggestions')} style={tabStyle('suggestions')}>
+          Suggestions{suggestions.length > 0 ? ` (${suggestions.length})` : ''}
+        </button>
       </div>
 
       {/* Tab content */}
@@ -711,6 +726,30 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
+      {activeTab === 'suggestions' && (
+        <div>
+          {suggestions.length === 0 ? (
+            <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '2rem' }}>
+              No pending suggestions — run a re-index to scan for TODO/FIXME comments
+            </p>
+          ) : (
+            <AnimatePresence initial={false}>
+              <motion.div layout style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {suggestions.map((s) => (
+                  <SuggestionCard
+                    key={s.id}
+                    suggestion={s}
+                    projectId={id}
+                    onAccepted={() => setSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
+                    onDismissed={() => setSuggestions((prev) => prev.filter((x) => x.id !== s.id))}
+                  />
+                ))}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
+      )}
+
       {showFullscreenEditor && (
         <div
           style={{
@@ -896,6 +935,131 @@ function formatEventType(type: string): string {
     device_revoked: '🚫 Device revoked',
   };
   return map[type] || type;
+}
+
+const KEYWORD_COLORS: Record<string, { bg: string; color: string }> = {
+  TODO:  { bg: 'rgba(255, 138, 0, 0.15)',  color: '#FF8A00' },
+  FIXME: { bg: 'rgba(255, 45, 85, 0.15)',  color: '#FF2D55' },
+  HACK:  { bg: 'rgba(255, 214, 10, 0.15)', color: '#FFD60A' },
+  XXX:   { bg: 'rgba(139, 92, 246, 0.15)', color: '#8B5CF6' },
+  NOTE:  { bg: 'rgba(0, 245, 255, 0.1)',   color: '#00F5FF' },
+};
+
+function SuggestionCard({
+  suggestion,
+  projectId,
+  onAccepted,
+  onDismissed,
+}: {
+  suggestion: any;
+  projectId: string;
+  onAccepted: () => void;
+  onDismissed: () => void;
+}) {
+  const [acting, setActing] = useState(false);
+  const kw = (suggestion.keyword as string).toUpperCase();
+  const kwStyle = KEYWORD_COLORS[kw] ?? KEYWORD_COLORS['NOTE'];
+
+  async function handleAccept() {
+    if (acting) return;
+    setActing(true);
+    try {
+      await acceptSuggestion(projectId, suggestion.id);
+      onAccepted();
+    } catch {
+      setActing(false);
+    }
+  }
+
+  async function handleDismiss() {
+    if (acting) return;
+    setActing(true);
+    try {
+      await dismissSuggestion(projectId, suggestion.id);
+      onDismissed();
+    } catch {
+      setActing(false);
+    }
+  }
+
+  const editorHref = `/repos/${projectId}/editor?path=${encodeURIComponent(suggestion.filePath)}#L${suggestion.lineNumber}`;
+
+  return (
+    <motion.div
+      layout
+      variants={itemVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      transition={listTransition}
+      className="glass-card"
+      style={{ padding: '0.875rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start', opacity: acting ? 0.5 : 1 }}
+    >
+      <span
+        style={{
+          flexShrink: 0,
+          padding: '0.2rem 0.5rem',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: '0.7rem',
+          fontWeight: 700,
+          letterSpacing: '0.05em',
+          background: kwStyle.bg,
+          color: kwStyle.color,
+          border: `1px solid ${kwStyle.color}40`,
+        }}
+      >
+        {kw}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontWeight: 500,
+            fontSize: '0.875rem',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            marginBottom: '0.25rem',
+          }}
+          title={suggestion.text}
+        >
+          {suggestion.text}
+        </div>
+        <a
+          href={editorHref}
+          style={{
+            fontSize: '0.72rem',
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-text-muted)',
+            textDecoration: 'none',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-accent-primary)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--color-text-muted)')}
+        >
+          {suggestion.filePath}:{suggestion.lineNumber}
+        </a>
+      </div>
+      <div style={{ display: 'flex', gap: '0.375rem', flexShrink: 0 }}>
+        <button
+          onClick={handleAccept}
+          disabled={acting}
+          className="btn-primary"
+          style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+          title="Accept — creates a todo note"
+        >
+          ✓ Accept
+        </button>
+        <button
+          onClick={handleDismiss}
+          disabled={acting}
+          className="btn-secondary"
+          style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+          title="Dismiss — won't re-appear"
+        >
+          ✗ Dismiss
+        </button>
+      </div>
+    </motion.div>
+  );
 }
 
 function AttachmentCard({ attachment, onLongPress }: { attachment: Attachment; onLongPress: () => void }) {

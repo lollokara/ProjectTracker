@@ -95,6 +95,7 @@ export const notes = pgTable(
     priority: priorityEnum('priority').notNull().default('medium'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     searchVector: text('search_vector'),
+    embedding: vector('embedding'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -253,5 +254,27 @@ export const codeFiles = pgTable(
   (t) => [
     index('code_files_project_id_idx').on(t.projectId),
     // unique index added via raw SQL migration; drizzle doesn't need to know about trgm GIN indexes
+  ],
+);
+
+// ── Note Suggestions (TODO/FIXME scraping) ────────────────────────────
+export const noteSuggestions = pgTable(
+  'note_suggestions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    filePath: text('file_path').notNull(),
+    lineNumber: integer('line_number').notNull(),
+    keyword: varchar('keyword', { length: 20 }).notNull(),
+    text: text('text').notNull(),
+    sourceCommitSha: varchar('source_commit_sha', { length: 64 }),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    acceptedNoteId: uuid('accepted_note_id').references(() => notes.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('note_suggestions_project_status_idx').on(t.projectId, t.status),
+    index('note_suggestions_project_path_idx').on(t.projectId, t.filePath),
   ],
 );

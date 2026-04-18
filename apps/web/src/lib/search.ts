@@ -2,6 +2,7 @@ import { db, codeFiles } from '@tracker/db';
 import { sql } from 'drizzle-orm';
 import * as path from 'path';
 import { generateQueryEmbedding } from '@/lib/embeddings';
+import { countAnchoredNotes } from '@/lib/notes-for-files';
 
 export type SearchMatch = {
   id: string;
@@ -13,6 +14,7 @@ export type SearchMatch = {
   score: number;
   preview: string | null;
   lineNumber: number | null;
+  noteCount: number;
 };
 
 // ── Tiny in-module LRU for query embeddings (size 64) ─────────────────
@@ -88,6 +90,7 @@ export async function hybridRepoSearch(opts: {
       score: 0,
       preview: (r.title_snippet as string | null) ?? null,
       lineNumber: null,
+      noteCount: 0,
     }));
   }
 
@@ -273,9 +276,24 @@ export async function hybridRepoSearch(opts: {
       score,
       preview: preview ?? null,
       lineNumber: c.lineNumber,
+      noteCount: 0,
     };
   });
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, limit);
+  const final = scored.slice(0, limit);
+
+  // Attach anchored-note counts in one batch round-trip
+  try {
+    const noteCounts = await countAnchoredNotes(
+      final.map((r) => ({ projectId: r.projectId, filePath: r.filePath }))
+    );
+    for (const r of final) {
+      r.noteCount = noteCounts.get(`${r.projectId}::${r.filePath}`) ?? 0;
+    }
+  } catch {
+    // non-fatal — counts stay 0
+  }
+
+  return final;
 }
