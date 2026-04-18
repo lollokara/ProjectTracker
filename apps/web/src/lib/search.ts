@@ -15,6 +15,7 @@ export type SearchMatch = {
   preview: string | null;
   lineNumber: number | null;
   noteCount: number;
+  matchedLineText?: string;
 };
 
 // ── Tiny in-module LRU for query embeddings (size 64) ─────────────────
@@ -38,6 +39,43 @@ async function getCachedEmbedding(q: string): Promise<number[]> {
   }
   embeddingCache.set(key, vec);
   return vec;
+}
+
+// ── Find the best-matching line within a chunk ────────────────────────
+function findBestMatchLine(
+  chunkContent: string,
+  startingLine: number,
+  query: string,
+): { lineNumber: number; lineText: string } {
+  const q = query.toLowerCase();
+  const words = q.split(/\s+/).filter((w) => w.length > 1);
+  const lines = chunkContent.split('\n');
+
+  let bestScore = -1;
+  let bestIdx = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const lower = lines[i].toLowerCase();
+    let score = 0;
+    if (lower.includes(q)) {
+      score = 1.0;
+    } else {
+      for (const word of words) {
+        if (lower.includes(word)) {
+          score += 0.3;
+        }
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+
+  return {
+    lineNumber: startingLine + bestIdx,
+    lineText: lines[bestIdx].trim(),
+  };
 }
 
 // ── JS-side trigram-like similarity fallback for chunk-only hits ──────
@@ -179,6 +217,7 @@ export async function hybridRepoSearch(opts: {
     sem: number;
     lineNumber: number | null;
     chunkContent: string | null;
+    matchedLineText: string | null;
     hasFile: boolean;
   };
 
@@ -201,6 +240,7 @@ export async function hybridRepoSearch(opts: {
       sem: 0,
       lineNumber: null,
       chunkContent: null,
+      matchedLineText: null,
       hasFile: true,
     });
   }
@@ -210,13 +250,16 @@ export async function hybridRepoSearch(opts: {
     const sem = parseFloat(r.sem as string) || 0;
     const content = (r.content as string) ?? '';
     // Strip "File: ...\n\n" header from chunk content
-    const preview = content.replace(/^File:[^\n]*\n\n/, '');
+    const strippedContent = content.replace(/^File:[^\n]*\n\n/, '');
+    const chunkStartLine = r.line_number as number;
+    const bestMatch = findBestMatchLine(strippedContent, chunkStartLine, q);
 
     if (map.has(key)) {
       const c = map.get(key)!;
       c.sem = sem;
-      c.lineNumber = r.line_number as number;
-      c.chunkContent = preview;
+      c.lineNumber = bestMatch.lineNumber;
+      c.chunkContent = strippedContent;
+      c.matchedLineText = bestMatch.lineText || null;
     } else {
       const fp = r.file_path as string;
       map.set(key, {
@@ -233,8 +276,9 @@ export async function hybridRepoSearch(opts: {
         sPath: jsSimilarity(fp, q) * 0.8,
         sTitle: 0,
         sem,
-        lineNumber: r.line_number as number,
-        chunkContent: preview,
+        lineNumber: bestMatch.lineNumber,
+        chunkContent: strippedContent,
+        matchedLineText: bestMatch.lineText || null,
         hasFile: false,
       });
     }
@@ -277,6 +321,7 @@ export async function hybridRepoSearch(opts: {
       preview: preview ?? null,
       lineNumber: c.lineNumber,
       noteCount: 0,
+      matchedLineText: c.matchedLineText ?? undefined,
     };
   });
 

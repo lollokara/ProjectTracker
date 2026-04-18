@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { search as searchApi } from '@/lib/api';
 import type { SearchMatch } from '@/lib/search';
+import { highlightMatch } from '@/lib/search-highlight';
 
 export default function SearchPage() {
   const router = useRouter();
@@ -170,7 +171,9 @@ export default function SearchPage() {
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{match.fileName}</span>
+                      <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                        {highlightMatch(match.fileName, query)}
+                      </span>
                       <span
                         style={{
                           fontSize: '0.72rem',
@@ -183,8 +186,23 @@ export default function SearchPage() {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {match.filePath}
+                        {highlightMatch(match.filePath, query)}
                       </span>
+                      {match.matchType === 'chunk' && match.lineNumber != null && (
+                        <span
+                          style={{
+                            fontSize: '0.62rem',
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '9999px',
+                            background: 'rgba(255,200,0,0.12)',
+                            color: 'rgba(255,200,0,0.85)',
+                            fontFamily: 'var(--font-mono)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          L{match.lineNumber}
+                        </span>
+                      )}
                       <span
                         style={{
                           fontSize: '0.65rem',
@@ -238,7 +256,7 @@ export default function SearchPage() {
                       </span>
                     </div>
 
-                    {match.preview && (
+                    {(match.matchType === 'chunk' ? (match.matchedLineText || match.preview) : match.preview) && (
                       <pre
                         style={{
                           fontSize: '0.72rem',
@@ -247,13 +265,15 @@ export default function SearchPage() {
                           lineHeight: 1.5,
                           overflow: 'hidden',
                           display: '-webkit-box',
-                          WebkitLineClamp: 3,
+                          WebkitLineClamp: match.matchType === 'chunk' ? 1 : 3,
                           WebkitBoxOrient: 'vertical',
                           whiteSpace: 'pre-wrap',
                           margin: '0 0 0.5rem 0',
                         }}
                       >
-                        {match.preview}
+                        {match.matchType === 'chunk'
+                          ? highlightMatch(match.matchedLineText || match.preview || '', query)
+                          : highlightMatch(match.preview || '', query)}
                       </pre>
                     )}
 
