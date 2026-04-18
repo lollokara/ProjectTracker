@@ -14,6 +14,7 @@ import {
   syncProjectRepo, getProjectRepoTree, getProjectRepoFile, searchProjectRepo,
   listSuggestions, acceptSuggestion, dismissSuggestion,
 } from '@/lib/api';
+import type { NearDuplicate } from '@/lib/api';
 import { PROJECT_ICON_TO_EMOJI } from '@/lib/project-visuals';
 import { itemVariants, listTransition } from '@/lib/motion';
 import { Project, Note, Attachment, Reminder, Priority, ReminderPreset, ActivityEvent } from '@tracker/shared';
@@ -106,6 +107,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   });
   const [savingReminder, setSavingReminder] = useState(false);
   const addReminderFormRef = useRef<HTMLFormElement | null>(null);
+
+  // Duplicate-detection dialog
+  const [dupDialog, setDupDialog] = useState<{
+    open: boolean;
+    nearDuplicates: NearDuplicate[];
+    pendingNote: Parameters<typeof createNote>[0] | null;
+  }>({ open: false, nearDuplicates: [], pendingNote: null });
 
   // Action menu
   const [actionMenu, setActionMenu] = useState<{ isOpen: boolean; type: string; item: any }>({
@@ -213,15 +221,43 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         });
         setEditingNoteId(null);
       } else {
-        await createNote({
-          projectId: id,
-          ...noteForm,
-        });
+        const noteData = { projectId: id, ...noteForm };
+        const result = await createNote(noteData);
+        if (!result.created) {
+          // Near-duplicates found — show dialog and pause
+          setDupDialog({ open: true, nearDuplicates: result.nearDuplicates, pendingNote: noteData });
+          return;
+        }
       }
-      setNoteForm({ 
-        title: '', 
-        body: '', 
-        kind: noteForm.kind, 
+      setNoteForm({
+        title: '',
+        body: '',
+        kind: noteForm.kind,
+        priority: 'medium',
+        sourceType: undefined,
+        sourcePath: undefined,
+        sourceLineStart: undefined,
+        sourceLineEnd: undefined,
+        sourceCommitSha: undefined,
+      });
+      setShowAddNote(false);
+      loadNotes();
+      loadTimeline();
+    } finally {
+      setSavingNote(false);
+    }
+  }
+
+  async function handleForceCreateNote() {
+    if (!dupDialog.pendingNote) return;
+    setSavingNote(true);
+    try {
+      await createNote({ ...dupDialog.pendingNote, force: true });
+      setDupDialog({ open: false, nearDuplicates: [], pendingNote: null });
+      setNoteForm({
+        title: '',
+        body: '',
+        kind: noteForm.kind,
         priority: 'medium',
         sourceType: undefined,
         sourcePath: undefined,
@@ -749,6 +785,122 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           )}
         </div>
       )}
+
+      {/* Near-duplicate detection dialog */}
+      <AnimatePresence>
+        {dupDialog.open && (
+          <motion.div
+            key="dup-dialog-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1200,
+              background: 'rgba(3, 6, 20, 0.82)',
+              backdropFilter: 'blur(6px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
+            }}
+          >
+            <motion.div
+              key="dup-dialog"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="glass-card"
+              style={{
+                width: '100%',
+                maxWidth: '520px',
+                padding: '1.5rem',
+                border: '1px solid rgba(0, 255, 200, 0.3)',
+                boxShadow: '0 0 40px rgba(0, 255, 200, 0.08)',
+              }}
+            >
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem', color: 'var(--color-accent-primary)' }}>
+                Similar notes found
+              </h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+                These existing notes look very similar. Consider extending one instead of creating a duplicate.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1.25rem' }}>
+                {dupDialog.nearDuplicates.map((dup) => (
+                  <a
+                    key={dup.id}
+                    href={`/projects/${id}#note-${dup.id}`}
+                    style={{ textDecoration: 'none', color: 'inherit' }}
+                    onClick={() => setDupDialog({ open: false, nearDuplicates: [], pendingNote: null })}
+                  >
+                    <div
+                      className="glass-card"
+                      style={{
+                        padding: '0.875rem',
+                        cursor: 'pointer',
+                        transition: 'border-color 0.15s ease',
+                        border: '1px solid var(--color-border-glass)',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent-primary)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border-glass)')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.375rem' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.875rem', flex: 1 }}>{dup.title}</span>
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            padding: '0.15rem 0.45rem',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            background: 'rgba(0, 255, 200, 0.12)',
+                            color: 'var(--color-accent-primary)',
+                            border: '1px solid rgba(0, 255, 200, 0.25)',
+                          }}
+                        >
+                          {Math.round(dup.similarity * 100)}% match
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.375rem', marginBottom: dup.snippet ? '0.375rem' : 0 }}>
+                        <span className={`badge badge-${dup.priority}`} style={{ fontSize: '0.68rem' }}>{dup.priority}</span>
+                        <span className="badge" style={{ fontSize: '0.68rem', background: 'rgba(255,255,255,0.06)', color: 'var(--color-text-muted)' }}>{dup.kind}</span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--color-text-muted)', marginLeft: 'auto' }}>
+                          {new Date(dup.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {dup.snippet && (
+                        <p style={{ fontSize: '0.78rem', color: 'var(--color-text-secondary)', lineHeight: 1.5, margin: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {dup.snippet}
+                        </p>
+                      )}
+                    </div>
+                  </a>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="btn-secondary"
+                  style={{ flex: 1 }}
+                  onClick={handleForceCreateNote}
+                  disabled={savingNote}
+                >
+                  {savingNote ? 'Creating...' : 'Create anyway'}
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => setDupDialog({ open: false, nearDuplicates: [], pendingNote: null })}
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showFullscreenEditor && (
         <div

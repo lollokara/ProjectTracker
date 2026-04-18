@@ -3,6 +3,7 @@ import { db, notes, activityEvents } from '@tracker/db';
 import { eq } from 'drizzle-orm';
 import { updateNoteSchema } from '@tracker/shared';
 import { requireAuth } from '@/lib/auth';
+import { embedNote } from '@/lib/notes-embeddings';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -43,6 +44,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (validated.title || validated.body) {
       updates.searchVector = [validated.title || existing.title, validated.body || existing.body || ''].join(' ');
+
+      // Recompute embedding when title or body changed (non-fatal)
+      try {
+        const newTitle = validated.title ?? existing.title;
+        const newBody = validated.body !== undefined ? validated.body : existing.body;
+        const vec = await embedNote({ title: newTitle, body: newBody });
+        if (vec !== null) {
+          updates.embedding = vec;
+        }
+      } catch (embErr) {
+        console.error('[notes] embedNote failed on PATCH, proceeding without embedding update:', embErr);
+      }
     }
 
     const [note] = await db.update(notes).set(updates).where(eq(notes.id, id)).returning();

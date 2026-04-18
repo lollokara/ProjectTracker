@@ -82,8 +82,31 @@ export async function getNotes(projectId: string, kind?: string) {
   return fetchAPI<Note[]>(`/api/notes?${params}`);
 }
 
-export async function createNote(data: CreateNoteInput) {
-  return fetchAPI<Note>('/api/notes', { method: 'POST', body: JSON.stringify(data) });
+export type NearDuplicate = {
+  id: string;
+  title: string;
+  snippet: string;
+  kind: string;
+  priority: string;
+  createdAt: string;
+  similarity: number;
+};
+
+export type CreateNoteResult =
+  | { created: true; note: Note }
+  | { created: false; nearDuplicates: NearDuplicate[] };
+
+export async function createNote(data: CreateNoteInput & { force?: boolean }): Promise<CreateNoteResult> {
+  const res = await fetch('/api/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `API error: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function updateNote(id: string, data: UpdateNoteInput) {

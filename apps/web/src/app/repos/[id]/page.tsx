@@ -105,10 +105,17 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
     if (savingNote) return;
     setSavingNote(true);
     try {
-      await createNote({
+      const result = await createNote({
         projectId: id,
         ...noteForm,
       });
+      if (!result.created) {
+        // Near-duplicates found — treat as no-op in this context (no dialog UI here)
+        console.info('[repos] near-duplicates found, skipping note creation:', result.nearDuplicates);
+        alert(`Similar notes already exist (${result.nearDuplicates.length} match${result.nearDuplicates.length !== 1 ? 'es' : ''}). Open the project to review them.`);
+        setShowAddNote(false);
+        return;
+      }
       setShowAddNote(false);
       alert('Note saved to project!');
     } catch (err) {
