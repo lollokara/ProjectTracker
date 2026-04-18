@@ -55,6 +55,11 @@ function getLanguageFromExtension(path: string): string {
   }
 }
 
+function hexToRgb(hex: string) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
+}
+
 export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -114,39 +119,6 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     isOpen: false, type: '', item: null,
   });
 
-  
-    
-    // Normalize content: replace literal \n with real newlines for highlighting
-    const content = repoFile.content.replace(/\\n/g, '\n');
-    const rawLines = content.split('\n');
-    
-    const lang = getLanguageFromExtension(repoFile.path);
-    const grammar = Prism.languages[lang] || Prism.languages.clike;
-    const html = Prism.highlight(content, grammar, lang);
-    
-    // Split by newline and fix open tags to ensure each line is valid HTML
-    const lines = html.split('\n');
-    const openTags: string[] = [];
-    const highlightedLines = lines.map((line) => {
-      let newLine = openTags.join('') + line;
-      const tagRegex = /<span class="([^"]+)">|<\/span>/g;
-      let match;
-      while ((match = tagRegex.exec(line)) !== null) {
-        if (match[0].startsWith('<span')) {
-          openTags.push(match[0]);
-        } else {
-          openTags.pop();
-        }
-      }
-      if (openTags.length > 0) {
-        newLine += '</span>'.repeat(openTags.length);
-      }
-      return newLine;
-    });
-    
-    return { highlightedLines, rawLines };
-  }, [repoFile]);
-
   async function loadProject() {
     const p = await getProject(id);
     setProject(p);
@@ -173,13 +145,6 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     setTimeline(t);
   }
 
-  
-  
-    }
-
-      const results = await searchProjectRepo(id, q, repoSearchMode);
-    setRepoSearchResults(results.results);
-  }
   useEffect(() => {
     loadProject();
     loadNotes();
@@ -187,8 +152,6 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     loadReminders();
     loadTimeline();
   }, [id]);
-
-  
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent | TouchEvent) => {
@@ -386,11 +349,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   if (!project) {
     return (
+      <div style={{ '--color-accent-primary': '#00ffc8', '--color-accent-primary-rgb': '0, 255, 200' } as any}>
       <AppShell title="Loading...">
         <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '3rem' }}>
           Loading project...
         </div>
       </AppShell>
+      </div>
     );
   }
 
@@ -412,7 +377,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   );
 
   return (
-    <div style={{ '--color-accent-primary': project.themeColor, '--color-accent-primary-rgb': project.themeColor } as any}>
+    <div style={{ 
+      '--color-accent-primary': project.themeColor, 
+      '--color-accent-primary-rgb': hexToRgb(project.themeColor) || project.themeColor 
+    } as any}>
     <AppShell title={`${PROJECT_ICON_TO_EMOJI[project.icon] || '📁'} ${project.title}`}>
       {/* Project header */}
       {!editing ? (
@@ -918,3 +886,49 @@ function NoteCard({ note, isTodo, onToggle, onLongPress }: { note: Note; isTodo:
   );
 }
 
+
+function formatEventType(type: string): string {
+  const map: Record<string, string> = {
+    project_created: '📁 Project created',
+    project_updated: '✏️ Project updated',
+    project_deleted: '🗑 Project deleted',
+    note_created: '📝 Note added',
+    note_updated: '✏️ Note updated',
+    note_deleted: '🗑 Note deleted',
+    todo_completed: '✅ Todo completed',
+    todo_uncompleted: '↻ Todo uncompleted',
+    attachment_added: '📎 Attachment added',
+    attachment_removed: '🗑 Attachment removed',
+    reminder_created: '⏰ Reminder set',
+    reminder_delivered: '🔔 Reminder delivered',
+    device_paired: '📱 Device paired',
+    device_revoked: '🚫 Device revoked',
+  };
+  return map[type] || type;
+}
+
+function AttachmentCard({ attachment, onLongPress }: { attachment: Attachment; onLongPress: () => void }) {
+  const longPressHandlers = useLongPress(onLongPress);
+  const isImage = attachment.type === 'image';
+
+  return (
+    <a href={getAttachmentUrl(attachment.id)} target="_blank" rel="noopener" className="no-select" style={{ textDecoration: 'none', color: 'inherit' }} {...longPressHandlers}>
+      <div className="glass-card" style={{ overflow: 'hidden' }}>
+        {isImage ? (
+          <div style={{ aspectRatio: '1', background: 'var(--color-bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <img src={getAttachmentUrl(attachment.id)} alt={attachment.caption || attachment.originalName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+          </div>
+        ) : (
+          <div style={{ aspectRatio: '1', background: 'var(--color-bg-glass)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem' }}>
+            📄
+          </div>
+        )}
+        <div style={{ padding: '0.625rem' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {attachment.originalName}
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}

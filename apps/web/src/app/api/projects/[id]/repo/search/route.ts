@@ -37,6 +37,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (mode === 'semantic') {
       const embedding = await generateQueryEmbedding(q);
       const similarityThreshold = 0.3; // Minimum cosine similarity
+      const vectorStr = `[${embedding.join(',')}]`;
 
       // Drizzle doesn't have native vector similarity helper yet, so use raw SQL
       const semanticResults = await db.execute(sql`
@@ -44,10 +45,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
           file_path, 
           line_number, 
           content,
-          1 - (embedding <=> ${JSON.stringify(embedding)}::vector) as similarity
+          1 - (embedding <=> ${vectorStr}::vector) as similarity
         FROM code_embeddings
         WHERE project_id = ${id}
-        AND 1 - (embedding <=> ${JSON.stringify(embedding)}::vector) > ${similarityThreshold}
+        AND 1 - (embedding <=> ${vectorStr}::vector) > ${similarityThreshold}
         ORDER BY similarity DESC
         LIMIT 20
       `);

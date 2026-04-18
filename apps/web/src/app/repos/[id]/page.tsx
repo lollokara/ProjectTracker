@@ -25,7 +25,7 @@ import 'prismjs/components/prism-markdown';
 import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-yaml';
 
-import { File, Folder, FileCode, FileText, FileJson, Image as ImageIcon, ChevronLeft, Search, RefreshCw, X } from 'lucide-react';
+import { File, Folder, FileCode, FileJson, FileText, Image as ImageIcon, ChevronLeft, Search, RefreshCw, X } from 'lucide-react';
 
 function getLanguageFromExtension(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase();
@@ -59,6 +59,11 @@ function getFileIcon(filename: string) {
     default:
       return <File size={16} />;
   }
+}
+
+function hexToRgb(hex: string) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : null;
 }
 
 export default function RepoBrowserPage({ params }: { params: Promise<{ id: string }> }) {
@@ -134,7 +139,6 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
     const tree = await getProjectRepoTree(id, path);
     setRepoPath(tree.path);
     setRepoTree(tree.items.sort((a: any, b: any) => {
-      // Directories first, then alphabetical
       if (a.type === 'tree' && b.type !== 'tree') return -1;
       if (a.type !== 'tree' && b.type === 'tree') return 1;
       return a.name.localeCompare(b.name);
@@ -144,6 +148,12 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
   async function openRepoFile(path: string) {
     const file = await getProjectRepoFile(id, path);
     setRepoFile(file);
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeRepoFile() {
+    setRepoFile(null);
+    document.body.style.overflow = '';
   }
 
   async function handleRepoSync() {
@@ -214,6 +224,9 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => {
     loadProject();
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [id]);
 
   useEffect(() => {
@@ -221,18 +234,27 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
     loadRepoTree(repoPath || '').catch(console.error);
   }, [project?.repoLastSyncStatus]);
 
-  if (!project) return <AppShell title="Loading..."><div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading...</div></AppShell>;
+  if (!project) return (
+    <div style={{ '--color-accent-primary': '#00ffc8', '--color-accent-primary-rgb': '0, 255, 200' } as any}>
+    <AppShell title="Loading..."><div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>Loading...</div></AppShell>
+    </div>
+  );
+
+  const rgb = hexToRgb(project.themeColor);
 
   return (
-    <div style={{ '--color-accent-primary': project.themeColor, '--color-accent-primary-rgb': project.themeColor } as any}>
+    <div style={{ 
+      '--color-accent-primary': project.themeColor, 
+      '--color-accent-primary-rgb': rgb || project.themeColor 
+    } as any}>
     <AppShell title={`${PROJECT_ICON_TO_EMOJI[project.icon] || '📁'} ${project.title} - Code`}>
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1.25rem' }}>
         <button className="btn-secondary" onClick={() => router.push('/repos')} style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
           <ChevronLeft size={16} /> Back to Repos
         </button>
       </div>
 
-      <div className="glass-card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+      <div className="glass-card" style={{ padding: '1rem', marginBottom: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
             {project.repositoryUrl || 'No repository URL configured'}
@@ -251,8 +273,16 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
             ) : project.repoLastSyncStatus === 'ok' ? <><RefreshCw size={14}/> Sync Repo</> : 'Clone Repo'}
           </button>
         </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
-          Last sync: {project.repoLastSyncAt ? new Date(project.repoLastSyncAt).toLocaleString() : 'never'} · Status: {project.repoLastSyncStatus || 'not_synced'}
+        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+          <span>Last sync: {project.repoLastSyncAt ? new Date(project.repoLastSyncAt).toLocaleString() : 'never'} · Status: <span className={`badge ${project.repoLastSyncStatus === 'ok' ? 'status-active' : 'status-paused'}`}>{project.repoLastSyncStatus || 'not_synced'}</span></span>
+          {project.repoLastIndexedAt && (
+            <span>Last indexed: {new Date(project.repoLastIndexedAt).toLocaleString()}</span>
+          )}
+          {project.repoLastIndexedCommitSha === project.repoLastCommitSha ? (
+            <span style={{ color: 'var(--color-accent-primary)' }}>✨ Indexed</span>
+          ) : (
+            <span style={{ color: 'var(--color-accent-warning)' }}>⌛ Indexing...</span>
+          )}
         </div>
         {project.repoLastSyncError && (
           <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--color-accent-danger)', padding: '0.5rem', background: 'rgba(255, 45, 85, 0.05)', borderRadius: 'var(--radius-sm)' }}>
@@ -263,7 +293,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
 
       {project.repoLastSyncStatus === 'ok' && (
         <>
-          <form onSubmit={handleRepoSearchSubmit} className="glass-card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+          <form onSubmit={handleRepoSearchSubmit} className="glass-card" style={{ padding: '1rem', marginBottom: '1.25rem' }}>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)' }} />
@@ -306,7 +336,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
           </form>
 
           {repoSearchResults.length > 0 && (
-            <div className="glass-card" style={{ padding: '0.75rem', marginBottom: '1rem', maxHeight: '30vh', overflow: 'auto' }}>
+            <div className="glass-card" style={{ padding: '0.75rem', marginBottom: '1.25rem', maxHeight: '30vh', overflow: 'auto' }}>
               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem', padding: '0 0.25rem' }}>
                 Found {repoSearchResults.length} results
               </div>
@@ -343,106 +373,131 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
             </div>
           )}
 
-          {!repoFile ? (
-            <div className="glass-card" style={{ minHeight: '50vh', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--color-border-glass)', background: 'rgba(0,0,0,0.2)' }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {repoPath ? `/${repoPath}` : '/'}
-                </span>
-                {repoPath && (
-                  <button
-                    className="btn-secondary"
-                    onClick={() => {
-                      const parent = repoPath.split('/').slice(0, -1).join('/');
-                      loadRepoTree(parent);
-                    }}
-                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
-                  >
-                    ↑ Up
-                  </button>
-                )}
-              </div>
-              <div style={{ flex: 1, overflow: 'auto', padding: '0.5rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {repoTree.map((item) => (
-                    <button
-                      key={`${item.path}-${item.sha || item.name}`}
-                      onClick={() => {
-                        if (item.type === 'tree') {
-                          loadRepoTree(item.path);
-                          setRepoFile(null);
-                        } else {
-                          openRepoFile(item.path);
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.75rem',
-                        padding: '0.6rem 0.75rem',
-                        borderRadius: 'var(--radius-sm)',
-                        border: 'none',
-                        background: 'transparent',
-                        color: 'var(--color-text-primary)',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                        transition: 'background 0.15s ease',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <span style={{ color: item.type === 'tree' ? 'var(--color-accent-primary)' : 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}>
-                        {item.type === 'tree' ? <Folder size={18} fill="currentColor" fillOpacity={0.2} /> : getFileIcon(item.name)}
-                      </span>
-                      <span style={{ fontFamily: 'var(--font-mono)' }}>{item.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+          <div className="glass-card" style={{ minHeight: '50vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--color-border-glass)', background: 'rgba(0,0,0,0.2)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {repoPath ? `/${repoPath}` : '/'}
+              </span>
+              {repoPath && (
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    const parent = repoPath.split('/').slice(0, -1).join('/');
+                    loadRepoTree(parent);
+                  }}
+                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+                >
+                  ↑ Up
+                </button>
+              )}
             </div>
-          ) : (
-            <div className="glass-card" style={{ padding: '0', display: 'flex', flexDirection: 'column', height: '70vh' }}>
-              <div style={{ padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--color-border-glass)', background: 'rgba(0,0,0,0.3)', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+            <div style={{ flex: 1, overflow: 'auto', padding: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {repoTree.map((item) => (
                   <button
-                    onClick={() => setRepoFile(null)}
-                    style={{ background: 'var(--color-bg-glass)', border: '1px solid var(--color-border-glass)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.2rem', flexShrink: 0 }}
-                    title="Close file"
-                  >
-                    <X size={16} />
-                  </button>
-                  <span style={{ fontSize: '0.85rem', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {repoFile.path}
-                  </span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>
-                    {(repoFile.size / 1024).toFixed(1)} KB
-                  </span>
-                </div>
-              </div>
-              <div style={{ flex: 1, overflow: 'auto', padding: '1rem', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', lineHeight: 1.6, background: 'var(--color-bg-primary)', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)' }}>
-                {highlightedLines.map((html, idx) => (
-                  <CodeLine
-                    key={`${idx + 1}`}
-                    lineNo={idx + 1}
-                    html={html}
-                    rawLine={rawLines[idx]}
-                    repoFile={repoFile}
-                    onAddNote={(metadata) => {
-                      setNoteForm(metadata);
-                      setShowAddNote(true);
+                    key={`${item.path}-${item.sha || item.name}`}
+                    onClick={() => {
+                      if (item.type === 'tree') {
+                        loadRepoTree(item.path);
+                      } else {
+                        openRepoFile(item.path);
+                      }
                     }}
-                  />
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--color-text-primary)',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      transition: 'background 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{ color: item.type === 'tree' ? 'var(--color-accent-primary)' : 'var(--color-text-muted)', display: 'flex', alignItems: 'center' }}>
+                      {item.type === 'tree' ? <Folder size={18} fill="currentColor" fillOpacity={0.2} /> : getFileIcon(item.name)}
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>{item.name}</span>
+                  </button>
                 ))}
               </div>
             </div>
-          )}
+          </div>
         </>
       )}
 
+      {/* Full screen editor overlay */}
+      <AnimatePresence>
+        {repoFile && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            style={{ 
+              position: 'fixed', 
+              inset: 0, 
+              zIndex: 1000, 
+              background: 'var(--color-bg-primary)', 
+              display: 'flex', 
+              flexDirection: 'column',
+              paddingTop: 'env(safe-area-inset-top)',
+              paddingBottom: 'env(safe-area-inset-bottom)',
+            }}
+          >
+            <div style={{ 
+              padding: '0.75rem 1rem', 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center', 
+              borderBottom: '1px solid var(--color-border-glass)', 
+              background: 'rgba(10, 10, 20, 0.85)',
+              backdropFilter: 'blur(20px)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+                <button
+                  onClick={closeRepoFile}
+                  style={{ background: 'var(--color-bg-glass)', border: '1px solid var(--color-border-glass)', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.3rem', flexShrink: 0 }}
+                  title="Close file"
+                >
+                  <X size={18} />
+                </button>
+                <span style={{ fontSize: '0.85rem', fontFamily: 'var(--font-mono)', color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {repoFile.path}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                  {(repoFile.size / 1024).toFixed(1)} KB
+                </span>
+              </div>
+            </div>
+            
+            <div style={{ flex: 1, overflow: 'auto', padding: '0.5rem 0', fontFamily: 'var(--font-mono)', fontSize: '0.8rem', lineHeight: 1.6 }}>
+              {highlightedLines.map((html, idx) => (
+                <CodeLine
+                  key={`${idx + 1}`}
+                  lineNo={idx + 1}
+                  html={html}
+                  rawLine={rawLines[idx]}
+                  repoFile={repoFile}
+                  onAddNote={(metadata) => {
+                    setNoteForm(metadata);
+                    setShowAddNote(true);
+                  }}
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {showAddNote && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)' }}>
           <form ref={addNoteFormRef} onSubmit={handleAddNote} className="glass-card animate-slide-up" style={{ padding: '1.25rem', width: '100%', maxWidth: '500px', border: '1px solid var(--color-accent-primary)' }}>
             <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>Create Note from Code</h3>
             {noteForm.sourcePath && (
@@ -507,24 +562,22 @@ function CodeLine({
 
   return (
     <div
-      style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.02)', padding: '0.15rem 0' }}
+      style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.02)', padding: '0.1rem 0' }}
       {...longPressHandlers}
       className="no-select"
     >
-      <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, width: '3.5rem', justifyContent: 'flex-end', borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: '0.5rem', marginRight: '0.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0, width: '2.4rem', justifyContent: 'flex-end', borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: '0.35rem', marginRight: '0.25rem' }}>
         <button
-          title="Add note on this line"
+          title="Add note"
           onClick={onLongPress}
-          style={{ border: 'none', background: 'transparent', color: 'var(--color-accent-primary)', cursor: 'pointer', fontSize: '0.8rem', padding: 0, opacity: 0.5, transition: 'opacity 0.2s' }}
-          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-          onMouseLeave={(e) => e.currentTarget.style.opacity = '0.5'}
+          style={{ border: 'none', background: 'transparent', color: 'var(--color-accent-primary)', cursor: 'pointer', fontSize: '0.7rem', padding: 0, opacity: 0.4 }}
         >
           +
         </button>
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', userSelect: 'none' }}>{lineNo}</span>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.7rem', userSelect: 'none', minWidth: '1.2rem', textAlign: 'right' }}>{lineNo}</span>
       </div>
       <span 
-        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1 }}
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1, fontSize: '0.75rem' }}
         dangerouslySetInnerHTML={{ __html: html || ' ' }}
       />
     </div>

@@ -76,7 +76,7 @@ async function indexProject(project: any) {
           filePath: chunk.filePath,
           lineNumber: chunk.lineNumber,
           content: chunk.content,
-          embedding: embeddings[idx],
+          embedding: `[${embeddings[idx].join(',')}]` as any,
         }))
       );
       
