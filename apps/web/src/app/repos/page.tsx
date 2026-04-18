@@ -249,6 +249,11 @@ function RepoCard({
                 ? `Last sync: ${new Date(project.repoLastSyncAt).toLocaleString()}`
                 : 'Never synced'}
             </span>
+            {project.repoLastSyncStatus === 'ok' && project.repoLastIndexedCommitSha !== project.repoLastCommitSha && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--color-accent-warning)' }}>
+                ⌛ Indexing ({Math.round(((project.repoIndexingProgress || 0) / (project.repoIndexingTotal || 1)) * 100)}%)
+              </span>
+            )}
           </div>
 
           <button

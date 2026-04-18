@@ -17,11 +17,11 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
             left: 0,
             right: 0,
             zIndex: 100,
-            paddingTop: 'env(safe-area-inset-top)',
             background: 'rgba(10, 10, 20, 0.85)',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
             borderBottom: '1px solid var(--color-border-glass)',
+            paddingTop: 'env(safe-area-inset-top)',
           }}
         >
           <div style={{ height: headerHeight, display: 'flex', alignItems: 'center', padding: '0 1.25rem' }}>
@@ -46,10 +46,12 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
       {/* Content */}
       <main
         style={{
-          paddingTop: title ? `calc(${headerHeight} + env(safe-area-inset-top) + 1rem)` : '1rem',
-          paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))',
-          paddingLeft: '1rem',
-          paddingRight: '1rem',
+          paddingTop: title 
+            ? `calc(${headerHeight} + env(safe-area-inset-top) + 0.5rem)` 
+            : 'calc(env(safe-area-inset-top) + 0.5rem)',
+          paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom))',
+          paddingLeft: 'calc(1rem + env(safe-area-inset-left))',
+          paddingRight: 'calc(1rem + env(safe-area-inset-right))',
           boxSizing: 'border-box',
           minHeight: '100dvh',
           maxWidth: '800px',

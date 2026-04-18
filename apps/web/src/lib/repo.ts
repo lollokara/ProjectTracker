@@ -68,8 +68,9 @@ export function safeRepoRelativePath(inputPath: string) {
 export async function listTree(projectId: string, relativePath = '') {
   const dir = projectRepoDir(projectId);
   const rel = safeRepoRelativePath(relativePath);
-  const target = rel ? `${rel}` : '.';
-  const { stdout } = await runGit(['-C', dir, 'ls-tree', 'HEAD', target]);
+  // Use 'HEAD:path' syntax to list contents of the directory
+  const target = rel ? `HEAD:${rel}` : 'HEAD';
+  const { stdout } = await runGit(['-C', dir, 'ls-tree', target]);
   const rows = stdout
     .split('\n')
     .filter(Boolean)
@@ -81,6 +82,7 @@ export async function listTree(projectId: string, relativePath = '') {
         type,
         sha,
         name,
+        // The path should be relative to the project root
         path: rel ? `${rel}/${name}` : name,
       };
     })

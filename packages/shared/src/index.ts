@@ -36,6 +36,8 @@ export interface Project {
   repoLastCommitSha: string | null;
   repoLastIndexedCommitSha: string | null;
   repoLastIndexedAt: string | null;
+  repoIndexingProgress: number | null;
+  repoIndexingTotal: number | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -16,15 +16,6 @@ import {
 import { PROJECT_ICON_TO_EMOJI } from '@/lib/project-visuals';
 import { itemVariants, listTransition } from '@/lib/motion';
 import { Project, Note, Attachment, Reminder, Priority, ReminderPreset, ActivityEvent } from '@tracker/shared';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-clike';
-import 'prismjs/components/prism-javascript';
-import 'prismjs/components/prism-typescript';
-import 'prismjs/components/prism-css';
-import 'prismjs/components/prism-json';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/components/prism-bash';
-import 'prismjs/components/prism-yaml';
 
 const priorityOptions = ['low', 'medium', 'high', 'critical'] as const;
 const statusOptions = ['active', 'paused', 'completed', 'archived'] as const;

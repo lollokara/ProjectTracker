@@ -199,7 +199,8 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
 
   useEffect(() => {
     const isSyncingStatus = ['syncing', 'cloning', 'fetching', 'pulling'].includes(project?.repoLastSyncStatus || '');
-    if (!repoSyncing && !isSyncingStatus) return;
+    const isIndexing = project?.repoLastCommitSha !== project?.repoLastIndexedCommitSha;
+    if (!repoSyncing && !isSyncingStatus && !isIndexing) return;
 
     const interval = setInterval(async () => {
       try {
@@ -207,7 +208,9 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
         setProject(p);
         
         const stillSyncing = ['syncing', 'cloning', 'fetching', 'pulling'].includes(p.repoLastSyncStatus || '');
-        if (!stillSyncing) {
+        const stillIndexing = p.repoLastCommitSha !== p.repoLastIndexedCommitSha;
+
+        if (!stillSyncing && !stillIndexing) {
           setRepoSyncing(false);
           if (p.repoLastSyncStatus === 'ok') {
             loadRepoTree(repoPath || '');
@@ -220,7 +223,7 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [id, repoSyncing, project?.repoLastSyncStatus]);
+  }, [id, repoSyncing, project?.repoLastSyncStatus, project?.repoLastCommitSha, project?.repoLastIndexedCommitSha]);
 
   useEffect(() => {
     loadProject();
@@ -281,7 +284,19 @@ export default function RepoBrowserPage({ params }: { params: Promise<{ id: stri
           {project.repoLastIndexedCommitSha === project.repoLastCommitSha ? (
             <span style={{ color: 'var(--color-accent-primary)' }}>✨ Indexed</span>
           ) : (
-            <span style={{ color: 'var(--color-accent-warning)' }}>⌛ Indexing...</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: '150px' }}>
+              <span style={{ color: 'var(--color-accent-warning)', whiteSpace: 'nowrap' }}>⌛ Indexing AI Search...</span>
+              <div style={{ flex: 1, height: '6px', background: 'var(--color-bg-glass)', borderRadius: '3px', overflow: 'hidden', position: 'relative' }}>
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.round(((project.repoIndexingProgress || 0) / (project.repoIndexingTotal || 1)) * 100)}%` }}
+                  style={{ height: '100%', background: 'var(--color-accent-primary)', boxShadow: '0 0 10px var(--color-accent-primary)' }}
+                />
+              </div>
+              <span style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>
+                {Math.round(((project.repoIndexingProgress || 0) / (project.repoIndexingTotal || 1)) * 100)}%
+              </span>
+            </div>
           )}
         </div>
         {project.repoLastSyncError && (
@@ -562,19 +577,19 @@ function CodeLine({
 
   return (
     <div
-      style={{ display: 'flex', gap: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.02)', padding: '0.1rem 0' }}
+      style={{ display: 'flex', gap: '0.35rem', borderBottom: '1px solid rgba(255,255,255,0.02)', padding: '0.05rem 0' }}
       {...longPressHandlers}
       className="no-select"
     >
-      <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0, width: '2.4rem', justifyContent: 'flex-end', borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: '0.35rem', marginRight: '0.25rem' }}>
+      <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0, width: '1.8rem', justifyContent: 'flex-end', borderRight: '1px solid rgba(255,255,255,0.1)', paddingRight: '0.2rem', marginRight: '0.2rem' }}>
         <button
           title="Add note"
           onClick={onLongPress}
-          style={{ border: 'none', background: 'transparent', color: 'var(--color-accent-primary)', cursor: 'pointer', fontSize: '0.7rem', padding: 0, opacity: 0.4 }}
+          style={{ border: 'none', background: 'transparent', color: 'var(--color-accent-primary)', cursor: 'pointer', fontSize: '0.65rem', padding: 0, opacity: 0.3 }}
         >
           +
         </button>
-        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.7rem', userSelect: 'none', minWidth: '1.2rem', textAlign: 'right' }}>{lineNo}</span>
+        <span style={{ color: 'var(--color-text-muted)', fontSize: '0.65rem', userSelect: 'none', minWidth: '1rem', textAlign: 'right' }}>{lineNo}</span>
       </div>
       <span 
         style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', flex: 1, fontSize: '0.75rem' }}

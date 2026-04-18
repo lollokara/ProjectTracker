@@ -63,6 +63,15 @@ async function indexProject(project: any) {
 
     console.log(`[indexer] Generated ${chunks.length} chunks for ${project.title}. Generating embeddings...`);
 
+    // Reset progress in DB
+    await db
+      .update(projects)
+      .set({ 
+        repoIndexingProgress: 0, 
+        repoIndexingTotal: chunks.length 
+      })
+      .where(eq(projects.id, project.id));
+
     // Process in batches to avoid OOM and DB timeouts
     const BATCH_SIZE = 50;
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
@@ -80,7 +89,13 @@ async function indexProject(project: any) {
         }))
       );
       
-      console.log(`[indexer] Indexed ${Math.min(i + BATCH_SIZE, chunks.length)}/${chunks.length} chunks...`);
+      const currentProgress = Math.min(i + BATCH_SIZE, chunks.length);
+      await db
+        .update(projects)
+        .set({ repoIndexingProgress: currentProgress })
+        .where(eq(projects.id, project.id));
+
+      console.log(`[indexer] Indexed ${currentProgress}/${chunks.length} chunks...`);
     }
 
     // Update project metadata

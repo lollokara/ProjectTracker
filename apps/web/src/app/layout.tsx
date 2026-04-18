@@ -34,7 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="safe-area-inset">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

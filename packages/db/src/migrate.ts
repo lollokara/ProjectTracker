@@ -104,6 +104,8 @@ async function migrate() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_commit_sha VARCHAR(64);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_indexed_commit_sha VARCHAR(64);
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_last_indexed_at TIMESTAMPTZ;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_indexing_progress INTEGER;
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS repo_indexing_total INTEGER;
 
     WITH palette AS (
       SELECT ARRAY[
